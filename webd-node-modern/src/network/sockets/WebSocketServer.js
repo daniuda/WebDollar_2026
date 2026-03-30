@@ -3,12 +3,14 @@ import { WebSocketServer as WSS } from 'ws';
 import { eventBus } from '../../utils/events.js';
 import { Logger } from '../../utils/logger.js';
 import { PeerManager } from '../peers/index.js';
+import { MessageHandler } from '../messages/MessageHandler.js';
 
 export class WebDollarWebSocketServer {
   constructor({ port = 8080 } = {}) {
     this.port = port;
     this.server = new WSS({ port });
     this.peerManager = new PeerManager();
+    this.messageHandler = new MessageHandler();
     this.server.on('connection', (ws, req) => this.handleConnection(ws, req));
     Logger.info(`WebDollar WebSocketServer ascultă pe portul ${port}`);
   }
