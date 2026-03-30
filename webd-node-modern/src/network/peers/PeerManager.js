@@ -1,13 +1,23 @@
 // PeerManager.js - gestiune peers compatibilă cu noduri vechi și moderne
 import { eventBus } from '../../utils/events.js';
 import { Logger } from '../../utils/logger.js';
+import { PeerDiscovery } from './PeerDiscovery.js';
+import { SEED_PEERS } from './peers.config.js';
 
 export class PeerManager {
   constructor() {
     this.peers = new Map(); // key: address, value: {ws, lastSeen, blacklist, whitelist}
     this.heartbeatInterval = 30000; // ms
+    this.discovery = new PeerDiscovery(SEED_PEERS);
     setInterval(() => this.heartbeatAll(), this.heartbeatInterval);
     eventBus.on('ws:message', ({ ws, data }) => this.handleMessage(ws, data));
+    this.autoDiscover();
+  }
+
+  async autoDiscover() {
+    const peers = await this.discovery.discover();
+    Logger.info('Peers descoperiți:', peers);
+    // TODO: inițiază conexiuni către peers noi
   }
 
   addPeer(address, ws) {
