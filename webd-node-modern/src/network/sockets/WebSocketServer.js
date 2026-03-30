@@ -4,6 +4,7 @@ import { eventBus } from '../../utils/events.js';
 import { Logger } from '../../utils/logger.js';
 import { PeerManager } from '../peers/index.js';
 import { MessageHandler } from '../messages/MessageHandler.js';
+import { Handshake } from '../messages/Handshake.js';
 
 export class WebDollarWebSocketServer {
   constructor({ port = 8080 } = {}) {
@@ -25,8 +26,8 @@ export class WebDollarWebSocketServer {
       Logger.info('Peer deconectat');
     });
     ws.on('error', (err) => Logger.error('Eroare peer:', err));
-    // handshake compatibil cu noduri vechi
-    this.sendHandshake(ws);
+    // handshake compatibil cu noduri vechi/nou
+    ws.send(JSON.stringify(Handshake.buildHandshakePayload()));
   }
 
   sendHandshake(ws) {
