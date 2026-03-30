@@ -15,6 +15,12 @@ module.exports = async function installPool() {
     return;
   }
   log(`[STEP] Node.js versiune compatibilă: ${nodeVersion}`);
+  // Suport pentru --port=PORT și --dbfolder=CALE
+  const portArg = process.argv.find(arg => arg.startsWith('--port='));
+  const port = portArg ? portArg.split('=')[1] : undefined;
+  const dbfolderArg = process.argv.find(arg => arg.startsWith('--dbfolder='));
+  const dbfolder = dbfolderArg ? dbfolderArg.split('=')[1] : undefined;
+
   // Clonare automată repo pool dacă lipsește
   const baseDir = path.resolve(__dirname, '../../');
   const poolDir = path.join(baseDir, 'webd-pool');
@@ -41,6 +47,37 @@ module.exports = async function installPool() {
   } catch (e) {
     log('[ERROR] npm install pentru pool a eșuat!');
     return;
+  }
+  // Configurare rapidă port/folder custom (doar exemplu, adaptare după structura pool-ului)
+  if (port) {
+    log(`[STEP] Setare port custom pool: ${port} (modifică manual config dacă e nevoie)`);
+    // Exemplu: scriere port în config.json dacă există
+    const configPath = poolDir + '/config.json';
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath));
+        config.port = parseInt(port, 10);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        log('[STEP] Portul pool setat în config.json');
+      } catch (e) {
+        log('[WARN] Nu s-a putut seta portul automat în config.json');
+      }
+    }
+  }
+  if (dbfolder) {
+    log(`[STEP] Setare folder custom pool: ${dbfolder} (modifică manual config dacă e nevoie)`);
+    // Exemplu: scriere folder în config.json dacă există
+    const configPath = poolDir + '/config.json';
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath));
+        config.dbfolder = dbfolder;
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        log('[STEP] Folderul pool setat în config.json');
+      } catch (e) {
+        log('[WARN] Nu s-a putut seta folderul automat în config.json');
+      }
+    }
   }
   log('[STEP] Instalare pool completă!');
 };
