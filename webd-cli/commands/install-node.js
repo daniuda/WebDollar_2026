@@ -71,23 +71,24 @@ module.exports = async function installNode() {
       return;
     }
   }
-  // Descărcare snapshot blockchain cu suport pentru URL custom
-  const blockchainDir = path.join(baseDir, 'webd-node', 'blockchainDB3');
-  if (!require('fs').existsSync(blockchainDir)) {
-    require('fs').mkdirSync(blockchainDir, { recursive: true });
+  // Suport pentru --dbfolder=cale/customă
+  const dbfolderArg = process.argv.find(arg => arg.startsWith('--dbfolder='));
+  const dbfolder = dbfolderArg ? dbfolderArg.split('=')[1] : path.join(baseDir, 'webd-node', 'blockchainDB3');
+  if (!require('fs').existsSync(dbfolder)) {
+    require('fs').mkdirSync(dbfolder, { recursive: true });
   }
   // Caută argumentul --snapshot=...
   const snapshotArg = process.argv.find(arg => arg.startsWith('--snapshot='));
   const snapshotUrl = snapshotArg ? snapshotArg.split('=')[1] : undefined;
   const t0 = Date.now();
-  const snapshotOk = await downloadSnapshot(log, path.join(baseDir, 'webd-node'), snapshotUrl);
+  const snapshotOk = await downloadSnapshot(log, dbfolder, snapshotUrl);
   log(`[INFO] Timp descărcare snapshot: ${((Date.now()-t0)/1000).toFixed(1)}s`);
   if (!snapshotOk) {
     log('[WARN] Nu s-a putut descărca snapshot-ul. Nodul va sincroniza normal.');
   } else {
     const unzipSnapshot = require('../lib/unzip-snapshot');
     const t1 = Date.now();
-    const unzipOk = await unzipSnapshot(log, path.join(baseDir, 'webd-node'));
+    const unzipOk = await unzipSnapshot(log, dbfolder);
     log(`[INFO] Timp dezarhivare snapshot: ${((Date.now()-t1)/1000).toFixed(1)}s`);
     if (!unzipOk) {
       log('[WARN] Snapshot-ul nu a putut fi dezarhivat.');
