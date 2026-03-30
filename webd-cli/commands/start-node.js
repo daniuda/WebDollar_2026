@@ -2,11 +2,16 @@
 const path = require('path');
 const { exec } = require('child_process');
 
+// Pornește WebDollar Node cu port custom (ex: webd start node 8080)
 module.exports = function startNode() {
   const nodePath = path.join(__dirname, '../../webd-node');
-  const entry = path.join(nodePath, 'start.sh');
   const isWin = process.platform.startsWith('win');
-  const cmd = isWin ? 'npm run start' : `bash ${entry}`;
+  // Preia portul din argumente CLI dacă există
+  const portArg = process.argv[4];
+  let cmd = isWin ? 'npm run start' : 'npm run start';
+  if (portArg) {
+    cmd += ` -- --port=${portArg}`;
+  }
   console.log('=== Pornire WebDollar Node ===');
   exec(cmd, { cwd: nodePath, stdio: 'inherit' }, (err) => {
     if (err) {
