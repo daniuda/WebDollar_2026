@@ -3,10 +3,10 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-module.exports = async function downloadSnapshot(log, destFolder) {
-  const snapshotUrl = 'https://webdollar.network/snapshot/blockchainDB3-latest.zip'; // exemplu URL
+module.exports = async function downloadSnapshot(log, destFolder, customUrl) {
+  const snapshotUrl = customUrl || 'https://webdollar.network/snapshot/blockchainDB3-latest.zip';
   const destZip = path.join(destFolder, 'blockchainDB3-latest.zip');
-  log('Descărcare snapshot blockchain...');
+  log('Descărcare snapshot blockchain de la: ' + snapshotUrl);
   return new Promise((resolve) => {
     const file = fs.createWriteStream(destZip);
     https.get(snapshotUrl, (response) => {
@@ -19,7 +19,6 @@ module.exports = async function downloadSnapshot(log, destFolder) {
       file.on('finish', () => {
         file.close(() => {
           log('Snapshot descărcat cu succes: ' + destZip);
-          // TODO: dezarhivare automată aici
           resolve(true);
         });
       });

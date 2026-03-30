@@ -63,12 +63,15 @@ module.exports = async function installNode() {
       return;
     }
   }
-  // Descărcare snapshot blockchain
+  // Descărcare snapshot blockchain cu suport pentru URL custom
   const blockchainDir = path.join(baseDir, 'webd-node', 'blockchainDB3');
   if (!require('fs').existsSync(blockchainDir)) {
     require('fs').mkdirSync(blockchainDir, { recursive: true });
   }
-  const snapshotOk = await downloadSnapshot(log, path.join(baseDir, 'webd-node'));
+  // Caută argumentul --snapshot=...
+  const snapshotArg = process.argv.find(arg => arg.startsWith('--snapshot='));
+  const snapshotUrl = snapshotArg ? snapshotArg.split('=')[1] : undefined;
+  const snapshotOk = await downloadSnapshot(log, path.join(baseDir, 'webd-node'), snapshotUrl);
   if (!snapshotOk) {
     log('[WARN] Nu s-a putut descărca snapshot-ul. Nodul va sincroniza normal.');
   } else {
