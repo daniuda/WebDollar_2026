@@ -3,6 +3,7 @@ import { eventBus } from '../../utils/events.js';
 import { Logger } from '../../utils/logger.js';
 import { PeerDiscovery } from './PeerDiscovery.js';
 import { SEED_PEERS } from './peers.config.js';
+import { PeerConnector } from './PeerConnector.js';
 
 export class PeerManager {
   constructor() {
@@ -11,13 +12,14 @@ export class PeerManager {
     this.discovery = new PeerDiscovery(SEED_PEERS);
     setInterval(() => this.heartbeatAll(), this.heartbeatInterval);
     eventBus.on('ws:message', ({ ws, data }) => this.handleMessage(ws, data));
+    this.connector = new PeerConnector(this);
     this.autoDiscover();
   }
 
   async autoDiscover() {
     const peers = await this.discovery.discover();
     Logger.info('Peers descoperiți:', peers);
-    // TODO: inițiază conexiuni către peers noi
+    await this.connector.connectToPeers(peers);
   }
 
   addPeer(address, ws) {
