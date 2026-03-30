@@ -28,21 +28,28 @@ function getRemoteVersion(repo) {
 }
 
 module.exports = function checkUpdates() {
-  console.log('=== Verificare update-uri CLI/node/pool ===');
+  const logPath = path.join(__dirname, '../log.txt');
+  const logMsg = (msg) => {
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const line = `[${now}] ${msg}`;
+    console.log(line);
+    fs.appendFileSync(logPath, line + '\n');
+  };
+  logMsg('=== Verificare update-uri CLI/node/pool ===');
   // CLI
   const cliLocal = getLocalVersion(path.join(__dirname, '../package.json'));
   const cliRemote = getRemoteVersion('https://github.com/daniuda/WebDollar_2026.git');
-  console.log(`[CLI] Local: ${cliLocal} | Remote: ${cliRemote}`);
+  logMsg(`[CLI] Local: ${cliLocal} | Remote: ${cliRemote}`);
   // Node
   const nodeLocal = getLocalVersion(path.join(__dirname, '../../webd-node/package.json'));
   const nodeRemote = getRemoteVersion('https://github.com/WebDollar/Node-WebDollar.git');
-  console.log(`[Node] Local: ${nodeLocal} | Remote: ${nodeRemote}`);
+  logMsg(`[Node] Local: ${nodeLocal} | Remote: ${nodeRemote}`);
   // Pool
   const poolLocal = getLocalVersion(path.join(__dirname, '../../webd-pool/package.json'));
   const poolRemote = getRemoteVersion('https://github.com/WebDollarPool/WebDollar-Pool.git');
-  console.log(`[Pool] Local: ${poolLocal} | Remote: ${poolRemote}`);
+  logMsg(`[Pool] Local: ${poolLocal} | Remote: ${poolRemote}`);
   // Notificare dacă există update
-  if (cliLocal !== cliRemote) console.log('[CLI] Există o versiune nouă!');
-  if (nodeLocal !== nodeRemote) console.log('[Node] Există o versiune nouă!');
-  if (poolLocal !== poolRemote) console.log('[Pool] Există o versiune nouă!');
+  if (cliLocal !== cliRemote) logMsg('[CLI] Există o versiune nouă!');
+  if (nodeLocal !== nodeRemote) logMsg('[Node] Există o versiune nouă!');
+  if (poolLocal !== poolRemote) logMsg('[Pool] Există o versiune nouă!');
 };
