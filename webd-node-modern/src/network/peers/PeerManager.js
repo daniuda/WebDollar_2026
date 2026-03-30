@@ -4,6 +4,7 @@ import { Logger } from '../../utils/logger.js';
 import { PeerDiscovery } from './PeerDiscovery.js';
 import { SEED_PEERS } from './peers.config.js';
 import { PeerConnector } from './PeerConnector.js';
+import { MessageBuilder } from '../messages/MessageBuilder.js';
 
 export class PeerManager {
   constructor() {
@@ -49,7 +50,7 @@ export class PeerManager {
   heartbeatAll() {
     for (const [address, peer] of this.peers.entries()) {
       try {
-        peer.ws.send(JSON.stringify({ type: 'ping', time: Date.now() }));
+        peer.ws.send(MessageBuilder.ping());
       } catch (e) {
         Logger.warn('Peer nu răspunde, elimin:', address);
         this.removePeer(address);
