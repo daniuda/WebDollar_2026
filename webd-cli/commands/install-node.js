@@ -12,7 +12,10 @@ const npmInstall = require('../lib/npm-install');
 const path = require('path');
 
 module.exports = async function installNode() {
-  const log = console.log;
+  const log = (msg) => {
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    console.log(`[${now}] ${msg}`);
+  };
   log('=== Instalare automată WebDollar Node ===');
   const os = detectOS();
   log(`[STEP] Sistem de operare detectat: ${os}`);
@@ -31,7 +34,9 @@ module.exports = async function installNode() {
   }
   // Instalare build-tools pe Windows
   if (os === 'windows') {
+    const t0 = Date.now();
     const ok = await installWindowsBuildTools(log);
+    log(`[INFO] Timp instalare build-tools: ${((Date.now()-t0)/1000).toFixed(1)}s`);
     if (!ok) return;
   }
   // Verificare existență repo webd-node
@@ -42,9 +47,10 @@ module.exports = async function installNode() {
   } else {
     log('[STEP] Repo webd-node NU există! Se clonează automat...');
     const { execSync } = require('child_process');
+    const t0 = Date.now();
     try {
       execSync('git clone https://github.com/WebDollar/Node-WebDollar.git webd-node', { cwd: baseDir, stdio: 'inherit' });
-      log('[STEP] Repo webd-node clonat cu succes.');
+      log(`[STEP] Repo webd-node clonat cu succes. (timp: ${((Date.now()-t0)/1000).toFixed(1)}s)`);
     } catch (e) {
       log('[ERROR] Clonarea repo-ului a eșuat!');
       return;
@@ -55,7 +61,9 @@ module.exports = async function installNode() {
     log('[STEP] Dependințele npm sunt deja instalate (node_modules există).');
   } else {
     log('[STEP] Dependințele npm NU sunt instalate! (urmează npm install automat cu retry)');
+    const t0 = Date.now();
     const ok = await npmInstall(log, path.join(baseDir, 'webd-node'));
+    log(`[INFO] Timp npm install: ${((Date.now()-t0)/1000).toFixed(1)}s`);
     if (ok) {
       log('[STEP] npm install a rulat cu succes.');
     } else {
@@ -71,12 +79,16 @@ module.exports = async function installNode() {
   // Caută argumentul --snapshot=...
   const snapshotArg = process.argv.find(arg => arg.startsWith('--snapshot='));
   const snapshotUrl = snapshotArg ? snapshotArg.split('=')[1] : undefined;
+  const t0 = Date.now();
   const snapshotOk = await downloadSnapshot(log, path.join(baseDir, 'webd-node'), snapshotUrl);
+  log(`[INFO] Timp descărcare snapshot: ${((Date.now()-t0)/1000).toFixed(1)}s`);
   if (!snapshotOk) {
     log('[WARN] Nu s-a putut descărca snapshot-ul. Nodul va sincroniza normal.');
   } else {
     const unzipSnapshot = require('../lib/unzip-snapshot');
+    const t1 = Date.now();
     const unzipOk = await unzipSnapshot(log, path.join(baseDir, 'webd-node'));
+    log(`[INFO] Timp dezarhivare snapshot: ${((Date.now()-t1)/1000).toFixed(1)}s`);
     if (!unzipOk) {
       log('[WARN] Snapshot-ul nu a putut fi dezarhivat.');
     } else {
