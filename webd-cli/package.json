@@ -12,5 +12,8 @@
   "type": "commonjs",
   "bin": {
     "webd": "./bin/webd.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
   }
 }
