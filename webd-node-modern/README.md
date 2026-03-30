@@ -17,6 +17,22 @@ Acest proiect reprezintă rescrierea completă a nodului WebDollar pentru Node.j
 - `src/utils/` – utilitare (logger, config, events)
 - `tests/` – testare automată
 
+## Module principale
+
+- `src/network/sockets/` — WebSocketServer, WebSocketClient
+- `src/network/peers/` — PeerManager, PeerDiscovery, PeerConnector
+- `src/network/messages/` — MessageTypes, MessageHandler, MessageBuilder, Handshake, LegacyCompat
+- `src/utils/` — logger, config, events
+
+## Funcționalități implementate
+
+- Peer management modern (reconnect, heartbeat, blacklist/whitelist)
+- Peer discovery automat cu seed list
+- Conectare automată la peers descoperiți
+- Routing modular pentru mesaje compatibile (ping/pong, handshake, extensibil)
+- Handshake compatibil vechi/nou
+- Utilitare pentru compatibilitate cu noduri vechi
+
 ## Primii pași
 
 1. npm install
