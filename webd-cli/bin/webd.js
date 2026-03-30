@@ -6,6 +6,7 @@ const installPool = require("../commands/install-pool");
 const startNode = require("../commands/start-node");
 const startPool = require("../commands/start-pool");
 const dockerNode = require("../commands/docker-node");
+const checkUpdates = require("../commands/check-updates");
 
 const [,, cmd, subcmd] = process.argv;
 
@@ -20,6 +21,8 @@ if (cmd === "install" && subcmd === "node") {
 	startPool();
 } else if (cmd === "docker" && subcmd === "node") {
 	dockerNode();
+} else if (cmd === "check" && subcmd === "updates") {
+	checkUpdates();
 } else {
 	console.log("WebDollar 2026 CLI – ready to install node or pool.");
 	console.log("Comenzi disponibile:");
@@ -28,4 +31,5 @@ if (cmd === "install" && subcmd === "node") {
 	console.log("  webd start node");
 	console.log("  webd start pool");
 	console.log("  webd docker node");
+	console.log("  webd check updates");
 }
