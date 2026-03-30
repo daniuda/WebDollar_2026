@@ -1,0 +1,13 @@
+{
+  "name": "webd-node-modern",
+  "version": "0.1.0",
+  "description": "WebDollar Node rescris pentru Node.js modern (ES Modules, async/await, modular)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["webdollar", "blockchain", "node", "modern", "esmodules"],
+  "author": "daniuda",
+  "license": "MIT"
+}
