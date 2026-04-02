@@ -41,14 +41,21 @@ function parsePoolAddress(poolAddress: string): ParsedPoolAddress | null {
 }
 
 /**
- * Build the socket.io-client 2.x `query` STRING for the Node-WebDollar pool.
+ * Build the socket.io-client 2.x `query` OBJECT for the Node-WebDollar pool.
  * The pool server immediately disconnects sockets without msg=HelloNode and
- * nodeConsensusType=1 (NODE_CONSENSUS_SERVER).  Query is passed as a pre-encoded
- * string so engine.io-client 3.x does not try to JSON-clone it internally.
+ * nodeConsensusType=1 (NODE_CONSENSUS_SERVER).  Query is passed as an object
+ * to match how the official Node-WebDollar miner client sends it.
  */
-function buildQueryString(): string {
+function buildQuery(): Record<string, string | number> {
   const uuid = randomBytes(16).toString('hex')
-  return `msg=HelloNode&version=1.3.24&uuid=${uuid}&nodeType=0&nodeConsensusType=1`
+  return {
+    msg: 'HelloNode',
+    version: '1.3.24',
+    uuid,
+    nodeType: 0,        // NODE_WEB_PEER  (browser-like client)
+    nodeConsensusType: 1, // NODE_CONSENSUS_SERVER (required when pool is active)
+    domain: 'browser',
+  }
 }
 
 function bytesFromAny(v: any): Buffer {
@@ -106,19 +113,16 @@ export class LegacyPoolBridge {
     this.lastError = ''
     this.lastJob = null
 
-    // Pass query params as a PRE-ENCODED STRING via the `query` option.
-    // Embedding them in the URL causes engine.io-client 3.x to clone the query
-    // string character-by-character, producing a numeric-indexed object that
-    // later throws "Cannot read properties of undefined (reading 'length')".
+    // Pass query as an OBJECT, exactly as the official Node-WebDollar miner client does.
+    // Polling (HTTP) is blocked/failing on this pool; use websocket only.
     const s = socketIo(parsed.poolUrl, {
-      forceNew: true,
       reconnection: true,
       reconnectionAttempts: Number.MAX_SAFE_INTEGER,
       reconnectionDelay: 3000,
       reconnectionDelayMax: 10000,
       timeout: 30000,
-      transports: ['polling', 'websocket'],
-      query: buildQueryString(),
+      transports: ['websocket'],
+      query: buildQuery(),
     })
     this.socket = s
 
