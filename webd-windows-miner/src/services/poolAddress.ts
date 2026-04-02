@@ -31,7 +31,7 @@ export function resolvePoolApiCandidates(input: string): string[] {
 
   if (value.startsWith('pool/')) {
     // Legacy pool strings may point to a Socket.IO endpoint that doesn't expose /worker/* REST.
-    return [primary, DEFAULT_HTTP_API]
+    return [DEFAULT_HTTP_API, primary]
   }
 
   return [primary]

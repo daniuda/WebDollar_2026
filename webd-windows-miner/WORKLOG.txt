@@ -61,3 +61,9 @@ Checkpoint 008
 - Added fallback API candidate logic for legacy `pool/...` addresses with clear error messaging when REST `/worker/*` is not available remotely.
 - Guarded tray startup to avoid dev crash when tray icon is missing.
 - Verified `npm run dev` startup no longer crashes (only non-blocking DevTools Autofill warnings remain).
+
+Checkpoint 009
+- Fixed preload path duplication issue (`dist-electron/dist-electron/preload.js`) by resolving preload relative to Electron main runtime directory.
+- Kept packaged renderer path resolution compatible with current dist layout.
+- Reordered legacy pool API candidates to try local REST backend first, reducing noisy 404 from remote legacy host.
+- Verified build and dev startup after changes.

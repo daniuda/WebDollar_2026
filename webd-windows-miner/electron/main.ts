@@ -46,8 +46,6 @@ async function saveConfig(config: Partial<AppConfig>): Promise<AppConfig> {
 }
 
 function createWindow() {
-  const appPath = app.getAppPath()
-
   const win = new BrowserWindow({
     width: 1480,
     height: 980,
@@ -56,7 +54,8 @@ function createWindow() {
     backgroundColor: '#061019',
     title: 'WebDollar Windows Miner',
     webPreferences: {
-      preload: join(appPath, 'dist-electron', 'preload.js'),
+      // main.js and preload.js are emitted side-by-side in dist-electron.
+      preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -81,7 +80,7 @@ function createWindow() {
     tryLoad()
     win.webContents.openDevTools({ mode: 'detach' })
   } else {
-    void win.loadFile(join(appPath, 'dist', 'index.html'))
+    void win.loadFile(join(__dirname, '..', 'dist', 'index.html'))
   }
 
   win.on('close', (event) => {
