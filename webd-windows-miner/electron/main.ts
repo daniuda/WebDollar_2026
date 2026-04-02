@@ -1,11 +1,9 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, importWalletRaw } from './wallet.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 const appVersion = app.getVersion()
 let mainWindow: BrowserWindow | null = null
@@ -48,6 +46,8 @@ async function saveConfig(config: Partial<AppConfig>): Promise<AppConfig> {
 }
 
 function createWindow() {
+  const appPath = app.getAppPath()
+
   const win = new BrowserWindow({
     width: 1480,
     height: 980,
@@ -56,7 +56,7 @@ function createWindow() {
     backgroundColor: '#061019',
     title: 'WebDollar Windows Miner',
     webPreferences: {
-      preload: join(__dirname, 'preload.js'),
+      preload: join(appPath, 'dist-electron', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -81,7 +81,7 @@ function createWindow() {
     tryLoad()
     win.webContents.openDevTools({ mode: 'detach' })
   } else {
-    void win.loadFile(join(__dirname, '../dist/index.html'))
+    void win.loadFile(join(appPath, 'dist', 'index.html'))
   }
 
   win.on('close', (event) => {
@@ -101,7 +101,21 @@ function createWindow() {
 function createTray() {
   if (tray) return
 
-  tray = new Tray(process.execPath)
+  try {
+    const iconPath = join(app.getAppPath(), 'build', 'tray.png')
+    const image = nativeImage.createFromPath(iconPath)
+
+    if (image.isEmpty()) {
+      // Don't crash if tray icon is missing in dev.
+      return
+    }
+
+    tray = new Tray(image)
+  } catch {
+    // Don't crash if tray creation fails in dev environments.
+    return
+  }
+
   tray.setToolTip('WebDollar Windows Miner')
 
   const contextMenu = Menu.buildFromTemplate([

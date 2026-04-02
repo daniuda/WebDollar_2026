@@ -54,3 +54,10 @@ Checkpoint 007
 - Added pool address normalization so `pool/.../https:$$host:port` is auto-resolved to usable API base URL format.
 - Added startup auto-connect sequence: on app load, if wallet exists, run worker auth + job + stats automatically; if autoStart is enabled, mining loop starts automatically.
 - Build verified successfully again with npm run build.
+
+Checkpoint 008
+- Addressed logs reported from runtime: preload script module mismatch and legacy pool REST mismatch symptoms.
+- Switched Electron bundle format to CJS for main/preload compatibility and removed `import.meta` dependency from main process path resolution.
+- Added fallback API candidate logic for legacy `pool/...` addresses with clear error messaging when REST `/worker/*` is not available remotely.
+- Guarded tray startup to avoid dev crash when tray icon is missing.
+- Verified `npm run dev` startup no longer crashes (only non-blocking DevTools Autofill warnings remain).

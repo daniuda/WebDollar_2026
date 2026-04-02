@@ -1,12 +1,26 @@
 import axios from 'axios'
 import type { PoolStats } from '../types/miner'
-import { resolvePoolApiBase } from './poolAddress'
+import { resolvePoolApiCandidates } from './poolAddress'
 
 export async function fetchPoolStats(baseUrl: string): Promise<PoolStats> {
-  const normalized = resolvePoolApiBase(baseUrl)
-  const response = await axios.get(`${normalized}/pool/stats`, {
-    timeout: 10_000,
-  })
+  const candidates = resolvePoolApiCandidates(baseUrl)
+  let lastError: unknown = null
+  let response: { data?: any } | null = null
+
+  for (const candidate of candidates) {
+    try {
+      response = await axios.get(`${candidate}/pool/stats`, {
+        timeout: 10_000,
+      })
+      break
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  if (!response) {
+    throw lastError instanceof Error ? lastError : new Error('Cannot fetch pool stats')
+  }
 
   return {
     workersTotal: response.data?.workersTotal ?? 0,
