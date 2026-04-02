@@ -109,3 +109,26 @@ Checkpoint 016
 - Added wallet value section in mining diagnostics (pending, confirmed, total WEBD).
 - Legacy bridge now stores reward/confirmed values from hello-pool answer and exposes them via worker stats.
 - Build verified successfully after these improvements.
+
+Checkpoint 017 (Plan + Checklist 1/2/3/5)
+- Scope approved for next baseline iteration:
+	1) Earnings history view
+	2) ETA payout estimate
+	3) No-job watchdog alert
+	5) Miner-only simple mode
+
+Implementation plan
+- Step 1: Extend config schema with `simpleMode` and `payoutTarget` and persist in renderer + Electron.
+- Step 2: Add miner-only mode toggle and hide advanced sections when enabled.
+- Step 3: Add periodic worker-stats snapshots and render mini earnings chart.
+- Step 4: Add payout ETA estimate based on reward growth history and target.
+- Step 5: Add watchdog timer for missing jobs and user-facing warning banner.
+- Step 6: Build verification + checkpoint save/push.
+
+Checklist salvari
+- [x] Config schema updated (`simpleMode`, `payoutTarget`) in types, renderer fallback and Electron config.
+- [x] Miner-only mode toggle implemented and persisted.
+- [x] Earnings history snapshots implemented and chart added in UI.
+- [x] ETA payout implemented from reward growth and configurable target.
+- [x] No-job watchdog implemented with warning banner and activity log signal.
+- [x] Build verified successfully after full implementation.

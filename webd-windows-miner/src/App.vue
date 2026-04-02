@@ -23,6 +23,8 @@ const config = reactive<DesktopAppConfig>({
   poolKey: '',
   threadCount: 1,
   autoStart: false,
+  simpleMode: false,
+  payoutTarget: 1,
 })
 
 const meta = ref<AppMeta>({ version: '0.001', platform: 'win32' })
@@ -50,6 +52,11 @@ const miningStale = ref(0)
 const miningLastResult = ref('-')
 const hashCounter = ref(0)
 const lastLoggedJobKey = ref('')
+const watchdogWarning = ref('')
+const lastJobReceivedAt = ref(0)
+const earningsHistory = ref<Array<{ ts: number; total: number }>>([])
+let workerStatsTimer: ReturnType<typeof setInterval> | null = null
+let watchdogTimer: ReturnType<typeof setInterval> | null = null
 let miningStopRequested = false
 let hashrateTimer: ReturnType<typeof setInterval> | null = null
 const activityLog = ref<string[]>([
@@ -88,10 +95,123 @@ const walletValueCards = computed(() => {
   }
 })
 
+const walletTotalsRaw = computed(() => {
+  const pending = Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0)
+  const confirmed = Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0)
+  return {
+    pending,
+    confirmed,
+    total: pending + confirmed,
+  }
+})
+
+const earningsBars = computed(() => {
+  const items = [...earningsHistory.value].reverse()
+  if (items.length === 0) return []
+
+  const values = items.map((x) => x.total)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const diff = Math.max(max - min, 0.000001)
+
+  return items.map((item, index) => {
+    const height = Math.max(8, Math.round(((item.total - min) / diff) * 100))
+    return {
+      key: `${item.ts}-${index}`,
+      height,
+      title: `${new Date(item.ts).toLocaleTimeString('ro-RO')} - ${item.total.toFixed(6)} WEBD`,
+    }
+  })
+})
+
+const payoutEtaLabel = computed(() => {
+  const target = Number(config.payoutTarget || 0)
+  const current = walletTotalsRaw.value.total
+
+  if (!Number.isFinite(target) || target <= 0) return 'Seteaza un target > 0 WEBD.'
+  if (current >= target) return 'Target atins.'
+  if (earningsHistory.value.length < 2) return 'Estimare in asteptare (date insuficiente).'
+
+  const latest = earningsHistory.value[0]
+  const oldest = earningsHistory.value[earningsHistory.value.length - 1]
+  const rewardDelta = latest.total - oldest.total
+  const hours = Math.max((latest.ts - oldest.ts) / 3_600_000, 0)
+
+  if (rewardDelta <= 0 || hours <= 0) return 'Estimare indisponibila (crestere 0).'
+
+  const ratePerHour = rewardDelta / hours
+  if (ratePerHour <= 0) return 'Estimare indisponibila.'
+
+  const remaining = target - current
+  const hoursLeft = remaining / ratePerHour
+  if (!Number.isFinite(hoursLeft) || hoursLeft <= 0) return 'Target atins.'
+
+  const wholeHours = Math.floor(hoursLeft)
+  const wholeMinutes = Math.floor((hoursLeft - wholeHours) * 60)
+  return `~${wholeHours}h ${wholeMinutes}m pana la ${target.toFixed(3)} WEBD`
+})
+
 function pushLog(message: string) {
   // Avoid inserting the same message repeatedly at the top of the activity log.
   if (activityLog.value[0] === message) return
   activityLog.value = [message, ...activityLog.value].slice(0, 10)
+}
+
+function recordEarningsSnapshot() {
+  const total = walletTotalsRaw.value.total
+  const now = Date.now()
+  const first = earningsHistory.value[0]
+
+  if (first && now - first.ts < 55_000) {
+    earningsHistory.value[0] = { ts: now, total }
+    return
+  }
+
+  earningsHistory.value = [{ ts: now, total }, ...earningsHistory.value].slice(0, 48)
+}
+
+function startWorkerStatsTimer() {
+  stopWorkerStatsTimer()
+  workerStatsTimer = setInterval(() => {
+    if (miningRunning.value && authResult.value?.token) {
+      void loadWorkerStats()
+    }
+  }, 30_000)
+}
+
+function stopWorkerStatsTimer() {
+  if (workerStatsTimer) {
+    clearInterval(workerStatsTimer)
+    workerStatsTimer = null
+  }
+}
+
+function startWatchdogTimer() {
+  stopWatchdogTimer()
+  watchdogTimer = setInterval(() => {
+    if (!miningRunning.value) return
+
+    if (!lastJobReceivedAt.value || Date.now() - lastJobReceivedAt.value > 45_000) {
+      if (!watchdogWarning.value) {
+        watchdogWarning.value = 'Nu au mai venit joburi noi in ultimele 45 secunde.'
+        pushLog(watchdogWarning.value)
+      }
+    } else {
+      watchdogWarning.value = ''
+    }
+  }, 10_000)
+}
+
+function stopWatchdogTimer() {
+  if (watchdogTimer) {
+    clearInterval(watchdogTimer)
+    watchdogTimer = null
+  }
+}
+
+function toggleSimpleMode() {
+  config.simpleMode = !config.simpleMode
+  void persistConfig()
 }
 
 const walletSummary = computed(() => {
@@ -312,6 +432,8 @@ async function loadWorkerJob() {
 
   try {
     currentJob.value = await fetchWorkerJob(config.poolUrl, authResult.value.token)
+    lastJobReceivedAt.value = Date.now()
+    watchdogWarning.value = ''
     success.value = `Job primit: ${currentJob.value.jobId}`
     const nextJobKey = `${currentJob.value.jobId}:${currentJob.value.height}`
     if (lastLoggedJobKey.value !== nextJobKey) {
@@ -335,8 +457,11 @@ async function loadWorkerStats() {
 
   try {
     workerStats.value = await fetchWorkerStats(config.poolUrl, authResult.value.token)
+    recordEarningsSnapshot()
     success.value = 'Worker stats actualizate.'
-    pushLog(`Worker stats refreshed for ${workerStats.value.workerId}.`)
+    if (!activityLog.value[0]?.includes(`Worker stats refreshed for ${workerStats.value.workerId}.`)) {
+      pushLog(`Worker stats refreshed for ${workerStats.value.workerId}.`)
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Fetch worker stats failed.'
     pushLog(`Worker stats failed: ${error.value}`)
@@ -387,6 +512,8 @@ async function startMiningLoop() {
   error.value = ''
   success.value = ''
   startHashrateMeter()
+  startWorkerStatsTimer()
+  startWatchdogTimer()
   pushLog('Mining loop started.')
 
   try {
@@ -453,6 +580,9 @@ async function startMiningLoop() {
     miningRunning.value = false
     miningStatus.value = 'Stopped'
     stopHashrateMeter()
+    stopWorkerStatsTimer()
+    stopWatchdogTimer()
+    watchdogWarning.value = ''
     miningHashrate.value = 0
     hashCounter.value = 0
   }
@@ -467,6 +597,8 @@ function stopMiningLoop() {
 onBeforeUnmount(() => {
   stopMiningLoop()
   stopHashrateMeter()
+  stopWorkerStatsTimer()
+  stopWatchdogTimer()
 })
 
 onMounted(() => {
@@ -512,6 +644,7 @@ onMounted(() => {
         </div>
 
         <div class="hero-actions">
+          <button class="ghost-btn" :disabled="saving" @click="toggleSimpleMode">{{ config.simpleMode ? 'Advanced mode' : 'Miner only mode' }}</button>
           <button class="ghost-btn" :disabled="loading" @click="refreshPoolStats">Refresh pool</button>
           <button class="primary-btn" :disabled="saving" @click="persistConfig">{{ saving ? 'Saving...' : 'Save config' }}</button>
         </div>
@@ -519,6 +652,7 @@ onMounted(() => {
 
       <p v-if="error" class="banner error-banner">{{ error }}</p>
       <p v-if="success" class="banner success-banner">{{ success }}</p>
+      <p v-if="watchdogWarning" class="banner error-banner">{{ watchdogWarning }}</p>
 
       <section class="metrics-grid">
         <article v-for="card in summaryCards" :key="card.label" class="metric-card">
@@ -527,7 +661,7 @@ onMounted(() => {
         </article>
       </section>
 
-      <section class="layout-grid">
+      <section v-if="!config.simpleMode" class="layout-grid">
         <article class="panel form-panel">
           <div class="section-head">
             <div>
@@ -594,7 +728,7 @@ onMounted(() => {
         </article>
       </section>
 
-      <section class="layout-grid wallet-grid">
+      <section v-if="!config.simpleMode" class="layout-grid wallet-grid">
         <article class="panel form-panel">
           <div class="section-head">
             <div>
@@ -766,6 +900,31 @@ onMounted(() => {
             <div>
               <p class="metric-label">Wallet total</p>
               <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Payout target (WEBD)</span>
+            <input v-model.number="config.payoutTarget" class="field-input" type="number" min="0.001" step="0.001" @blur="persistConfig" />
+          </label>
+
+          <div class="diagnostics-grid encrypted-grid">
+            <div>
+              <p class="metric-label">ETA payout</p>
+              <p class="metric-value small-value">{{ payoutEtaLabel }}</p>
+            </div>
+          </div>
+
+          <div class="timeline">
+            <p class="metric-label">Earnings trend (ultimele snapshot-uri)</p>
+            <div class="earnings-chart">
+              <div
+                v-for="bar in earningsBars"
+                :key="bar.key"
+                class="earnings-bar"
+                :style="{ height: `${bar.height}%` }"
+                :title="bar.title"
+              />
             </div>
           </div>
 

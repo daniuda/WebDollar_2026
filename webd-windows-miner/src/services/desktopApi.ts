@@ -10,6 +10,8 @@ const fallbackConfig: DesktopAppConfig = {
   poolKey: '',
   threadCount: 1,
   autoStart: false,
+  simpleMode: false,
+  payoutTarget: 1,
 }
 
 function hasDesktopApi(): boolean {

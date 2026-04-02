@@ -18,6 +18,8 @@ const defaultConfig = {
   poolKey: '',
   threadCount: 1,
   autoStart: false,
+  simpleMode: false,
+  payoutTarget: 1,
 }
 
 type AppConfig = typeof defaultConfig

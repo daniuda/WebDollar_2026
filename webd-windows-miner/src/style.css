@@ -290,6 +290,26 @@ button {
   gap: 8px;
 }
 
+.earnings-chart {
+  margin-top: 10px;
+  height: 84px;
+  display: grid;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(5, 9, 15, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.earnings-bar {
+  min-height: 8px;
+  border-radius: 8px 8px 2px 2px;
+  background: linear-gradient(180deg, #f7b267, #f1a048);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
 .wallet-grid {
   margin-top: 2px;
 }

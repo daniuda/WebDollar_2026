@@ -5,6 +5,8 @@ export interface DesktopAppConfig {
   poolKey: string
   threadCount: number
   autoStart: boolean
+  simpleMode: boolean
+  payoutTarget: number
 }
 
 export interface GeneratedWallet {
