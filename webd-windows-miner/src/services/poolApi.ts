@@ -1,8 +1,9 @@
 import axios from 'axios'
 import type { PoolStats } from '../types/miner'
+import { resolvePoolApiBase } from './poolAddress'
 
 export async function fetchPoolStats(baseUrl: string): Promise<PoolStats> {
-  const normalized = baseUrl.replace(/\/$/, '')
+  const normalized = resolvePoolApiBase(baseUrl)
   const response = await axios.get(`${normalized}/pool/stats`, {
     timeout: 10_000,
   })

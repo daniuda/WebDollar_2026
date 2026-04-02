@@ -48,3 +48,9 @@ Checkpoint 006
 - Added resilient desktopApi fallback layer: config/meta now work with safe localStorage fallback when `window.desktopApi` is missing.
 - Wallet-only operations now return explicit Electron-runtime errors instead of hard crashing.
 - Build verified successfully again with npm run build.
+
+Checkpoint 007
+- Set SpyClub legacy pool address as the default pool across Electron config and renderer fallback.
+- Added pool address normalization so `pool/.../https:$$host:port` is auto-resolved to usable API base URL format.
+- Added startup auto-connect sequence: on app load, if wallet exists, run worker auth + job + stats automatically; if autoStart is enabled, mining loop starts automatically.
+- Build verified successfully again with npm run build.

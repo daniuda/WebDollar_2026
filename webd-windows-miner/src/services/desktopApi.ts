@@ -1,9 +1,10 @@
 import type { AppMeta, DesktopAppConfig, GeneratedWallet } from '../types/miner'
+import { getDefaultPoolAddress } from './poolAddress'
 
 const CONFIG_KEY = 'webd_windows_miner_config'
 
 const fallbackConfig: DesktopAppConfig = {
-  poolUrl: 'http://127.0.0.1:3001',
+  poolUrl: getDefaultPoolAddress(),
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',

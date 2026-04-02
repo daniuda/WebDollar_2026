@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -8,8 +8,11 @@ import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, impor
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 const appVersion = app.getVersion()
+let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
 const defaultConfig = {
-  poolUrl: 'http://127.0.0.1:3001',
+  poolUrl: 'pool/1/1/1/SpyClub/0.0001/374d24d549e73f05280b239d96d7c6b28f15aabb5d41e89818b660a9ebc3276e/https:$$node.spyclub.ro:8080',
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',
@@ -80,6 +83,59 @@ function createWindow() {
   } else {
     void win.loadFile(join(__dirname, '../dist/index.html'))
   }
+
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      win.hide()
+    }
+  })
+
+  win.on('closed', () => {
+    mainWindow = null
+  })
+
+  mainWindow = win
+}
+
+function createTray() {
+  if (tray) return
+
+  tray = new Tray(process.execPath)
+  tray.setToolTip('WebDollar Windows Miner')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open',
+      click: () => {
+        if (!mainWindow) {
+          createWindow()
+          return
+        }
+
+        mainWindow.show()
+        mainWindow.focus()
+      },
+    },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ])
+
+  tray.setContextMenu(contextMenu)
+  tray.on('double-click', () => {
+    if (!mainWindow) {
+      createWindow()
+      return
+    }
+
+    mainWindow.show()
+    mainWindow.focus()
+  })
 }
 
 app.whenReady().then(() => {
@@ -98,6 +154,7 @@ app.whenReady().then(() => {
   ipcMain.handle('config:save', async (_event: IpcMainInvokeEvent, config: Partial<AppConfig>) => saveConfig(config))
 
   createWindow()
+  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -107,7 +164,9 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Keep app alive in tray until explicit Quit.
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })

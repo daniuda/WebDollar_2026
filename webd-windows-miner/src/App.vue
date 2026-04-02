@@ -13,10 +13,11 @@ import {
 import { fetchPoolStats } from './services/poolApi'
 import { mineRange } from './services/hashEngine'
 import { authWorker, fetchWorkerJob, fetchWorkerStats, submitWorkerShare } from './services/workerApi'
+import { getDefaultPoolAddress, resolvePoolApiBase } from './services/poolAddress'
 import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolStats, ShareResult, WorkerStats } from './types/miner'
 
 const config = reactive<DesktopAppConfig>({
-  poolUrl: 'http://127.0.0.1:3001',
+  poolUrl: getDefaultPoolAddress(),
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',
@@ -106,9 +107,28 @@ async function hydrate() {
     ])
 
     Object.assign(config, savedConfig)
+    if (!config.poolUrl.trim()) {
+      config.poolUrl = getDefaultPoolAddress()
+    }
+
     meta.value = appMeta
     pushLog(`Loaded local config for ${appMeta.platform} v${appMeta.version}.`)
     await refreshPoolStats()
+
+    // Auto-connect to configured/default pool when wallet exists.
+    if (config.walletAddress) {
+      pushLog(`Auto-connect to pool: ${resolvePoolApiBase(config.poolUrl)}`)
+      await runWorkerAuth()
+      if (authResult.value?.token) {
+        await loadWorkerJob()
+        await loadWorkerStats()
+        if (config.autoStart && !miningRunning.value) {
+          void startMiningLoop()
+        }
+      }
+    } else {
+      pushLog('Auto-connect skipped: wallet address is empty.')
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Cannot load desktop state.'
     pushLog(`Hydration failed: ${error.value}`)
@@ -516,7 +536,7 @@ onMounted(() => {
 
           <label class="field">
             <span>Pool API URL</span>
-            <input v-model="config.poolUrl" class="field-input" type="text" placeholder="http://127.0.0.1:3001" />
+            <input v-model="config.poolUrl" class="field-input" type="text" placeholder="pool/1/1/1/.../https:$$host:port" />
           </label>
 
           <label class="field">

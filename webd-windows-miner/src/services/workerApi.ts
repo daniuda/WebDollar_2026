@@ -1,8 +1,9 @@
 import axios from 'axios'
 import type { AuthResult, MiningJob, ShareResult, WorkerStats } from '../types/miner'
+import { resolvePoolApiBase } from './poolAddress'
 
 function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/$/, '')
+  return resolvePoolApiBase(baseUrl)
 }
 
 export async function authWorker(baseUrl: string, walletAddress: string, poolKey: string, existingWorkerId = ''): Promise<AuthResult> {
