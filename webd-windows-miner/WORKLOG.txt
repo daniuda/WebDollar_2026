@@ -91,3 +91,14 @@ Checkpoint 013
 - Removed manual auth, job-fetch and manual share-submit controls from the main mining flow.
 - Kept worker/session diagnostics visible while leaving authentication and job handling automatic inside the mining loop.
 - Build verified successfully after the UI cleanup.
+
+Checkpoint 014
+- Stabilized direct legacy pool connectivity through multiple protocol and runtime fixes in Electron and legacy Socket.IO bridge.
+- Fixed legacy hello payload for PoS pools by sending unencoded miner address list, removing server-side undefined length failures.
+- Fixed duplicate activity-log keys and reduced repeated log spam in UI.
+- Confirmed current desktop app can mine in legacy mode.
+
+Checkpoint 015 (Baseline)
+- First working mining baseline locked as the reference version for future development.
+- Decision recorded: from now on, all new work starts from this working baseline.
+- All changes up to this point saved and pushed.
