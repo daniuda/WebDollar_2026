@@ -37,6 +37,19 @@ function parsePoolAddress(poolAddress: string): ParsedPoolAddress | null {
   return { poolName, poolFee, poolPublicKeyHex, poolUrl }
 }
 
+/**
+ * The Node-WebDollar pool server (socket.io 2.x) immediately disconnects
+ * any connection that does not carry these query params.
+ * nodeConsensusType=1 (NODE_CONSENSUS_SERVER) is mandatory when connecting
+ * to a pool node, otherwise the pool drops the socket without registering
+ * the hello-pool event handler.
+ */
+function buildPoolUrl(poolUrl: string): string {
+  const uuid = randomBytes(16).toString('hex')
+  const sep = poolUrl.includes('?') ? '&' : '?'
+  return `${poolUrl}${sep}msg=HelloNode&version=1.3.24&uuid=${uuid}&nodeType=0&nodeConsensusType=1`
+}
+
 function bytesFromAny(v: any): Buffer {
   if (!v) return Buffer.alloc(0)
   if (Buffer.isBuffer(v)) return v
@@ -92,7 +105,7 @@ export class LegacyPoolBridge {
     this.lastError = ''
     this.lastJob = null
 
-    const s = socketIo(parsed.poolUrl, {
+    const s = socketIo(buildPoolUrl(parsed.poolUrl), {
       reconnection: true,
       reconnectionAttempts: Number.MAX_SAFE_INTEGER,
       reconnectionDelay: 3000,
@@ -104,10 +117,27 @@ export class LegacyPoolBridge {
     })
     this.socket = s
 
+    // Pool server sends HelloNode after accepting the connection and registering
+    // our socket in its NodesList.  We send hello-pool only after that so the
+    // pool's hello-pool event handler is guaranteed to exist.
+    let helloSent = false
+    const doSendHello = () => {
+      if (!helloSent) {
+        helloSent = true
+        this.sendHello(walletAddress)
+      }
+    }
+
     s.on('connect', () => {
       this.connected = true
       this.workerId = s.id || `legacy-${Date.now()}`
-      this.sendHello(walletAddress)
+      // Fallback: if HelloNode from server never arrives, send hello-pool after 1.5s
+      setTimeout(doSendHello, 1500)
+    })
+
+    // Primary trigger: server sends HelloNode once it has registered our socket
+    s.on('HelloNode', () => {
+      setTimeout(doSendHello, 150)
     })
 
     s.on('disconnect', () => {
@@ -144,6 +174,10 @@ export class LegacyPoolBridge {
           reject(new Error(answer?.message || 'Pool refuzat'))
           return
         }
+
+        // Step 3 of the 3-way handshake: confirm we accepted the pool's answer.
+        // Without this, the pool never calls addConnectedMinerPool and won't send work.
+        s.emit('mining-pool/hello-pool/answer/confirmation', { result: true })
 
         this.connected = true
         this.token = `legacy-${Date.now()}`
