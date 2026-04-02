@@ -1,0 +1,17 @@
+WebDollar Windows Miner - Work Log
+
+Date: 2026-04-02
+
+Checkpoint 001
+- Scope fixed: Windows app first, Android resumes after desktop MVP validates wallet, pool and mining flow.
+- Stack fixed: Electron + TypeScript + Vue.
+- Project created at d:\Webdollar_2026\webd-windows-miner.
+- Implemented: Electron main process, preload bridge, Vue renderer, local config persistence, pool stats HTTP service, initial desktop dashboard.
+- Build verified successfully with npm run build.
+- Config currently persisted locally: poolUrl, walletAddress, poolKey, threadCount, autoStart.
+- Current UI can save local config and fetch public pool stats from the HTTP backend.
+- Next step approved: implement wallet compatibility layer for legacy .webd import/export and encrypted local wallet storage, then continue with auth/get-job/share/mining loop.
+
+Rule for future checkpoints
+- Save progress in this file at major milestones.
+- Commit and push the Windows app regularly so progress can be reviewed remotely.

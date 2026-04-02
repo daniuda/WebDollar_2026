@@ -1,0 +1,54 @@
+{
+  "name": "webd-windows-miner",
+  "private": true,
+  "version": "0.001",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsup electron/main.ts electron/preload.ts --format esm --watch --out-dir dist-electron --target node20",
+    "dev:electron": "wait-on tcp:5173 dist-electron/main.js dist-electron/preload.js && electron dist-electron/main.js",
+    "build": "npm run typecheck:app && npm run typecheck:node && npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsup electron/main.ts electron/preload.ts --format esm --out-dir dist-electron --target node20",
+    "typecheck:app": "vue-tsc --noEmit -p tsconfig.app.json",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "vue": "^3.5.25"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vue/tsconfig": "^0.8.1",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "concurrently": "^9.2.1",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vue-tsc": "^3.1.5",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.webdollar.windowsminer",
+    "productName": "WebDollar Windows Miner",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
