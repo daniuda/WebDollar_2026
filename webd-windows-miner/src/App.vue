@@ -49,6 +49,7 @@ const miningRejected = ref(0)
 const miningStale = ref(0)
 const miningLastResult = ref('-')
 const hashCounter = ref(0)
+const lastLoggedJobKey = ref('')
 let miningStopRequested = false
 let hashrateTimer: ReturnType<typeof setInterval> | null = null
 const activityLog = ref<string[]>([
@@ -75,6 +76,8 @@ const summaryCards = computed<Array<{ label: string; value: string }>>(() => {
 })
 
 function pushLog(message: string) {
+  // Avoid inserting the same message repeatedly at the top of the activity log.
+  if (activityLog.value[0] === message) return
   activityLog.value = [message, ...activityLog.value].slice(0, 10)
 }
 
@@ -294,7 +297,11 @@ async function loadWorkerJob() {
   try {
     currentJob.value = await fetchWorkerJob(config.poolUrl, authResult.value.token)
     success.value = `Job primit: ${currentJob.value.jobId}`
-    pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
+    const nextJobKey = `${currentJob.value.jobId}:${currentJob.value.height}`
+    if (lastLoggedJobKey.value !== nextJobKey) {
+      pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
+      lastLoggedJobKey.value = nextJobKey
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Fetch job failed.'
     pushLog(`Fetch job failed: ${error.value}`)
@@ -377,6 +384,14 @@ async function startMiningLoop() {
 
       if (!currentJob.value || !authResult.value?.token) {
         await new Promise((resolve) => setTimeout(resolve, 500))
+        continue
+      }
+
+      if (currentJob.value.nonceEnd <= currentJob.value.nonceStart) {
+        // PoS jobs often expose no PoW nonce range, so hashrate stays at 0 by design.
+        miningStatus.value = `PoS job ${currentJob.value.height} (no PoW range)`
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+        currentJob.value = null
         continue
       }
 
@@ -557,7 +572,7 @@ onMounted(() => {
           <div class="timeline">
             <p class="metric-label">Activity log</p>
             <ul class="timeline-list">
-              <li v-for="entry in activityLog" :key="entry">{{ entry }}</li>
+              <li v-for="(entry, index) in activityLog" :key="`${index}-${entry}`">{{ entry }}</li>
             </ul>
           </div>
         </article>
