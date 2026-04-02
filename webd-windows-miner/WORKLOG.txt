@@ -36,3 +36,9 @@ Checkpoint 004
 - Added runtime mining counters in UI: accepted/rejected/stale shares, status and last result.
 - Build verified successfully again with npm run build.
 - Next step: harden miner loop with retries/backoff tuning and then run practical test session before switching back to Android fixes.
+
+Checkpoint 005
+- Fixed Electron dev startup crash caused by tsup bundling of electron internals (`Dynamic require of fs`).
+- Updated tsup scripts to externalize electron in both watch and build modes.
+- Added resilient dev URL retry logic in Electron main process to avoid transient Vite race (`ERR_CONNECTION_REFUSED`).
+- Verified `npm run dev` starts cleanly (only non-blocking DevTools Autofill warnings remain).

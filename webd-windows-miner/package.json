@@ -7,11 +7,11 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "vite",
-    "dev:main": "tsup electron/main.ts electron/preload.ts --format esm --watch --out-dir dist-electron --target node20",
+    "dev:main": "tsup electron/main.ts electron/preload.ts --format esm --watch --out-dir dist-electron --target node20 --external electron",
     "dev:electron": "wait-on tcp:5173 dist-electron/main.js dist-electron/preload.js && electron dist-electron/main.js",
     "build": "npm run typecheck:app && npm run typecheck:node && npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
-    "build:main": "tsup electron/main.ts electron/preload.ts --format esm --out-dir dist-electron --target node20",
+    "build:main": "tsup electron/main.ts electron/preload.ts --format esm --out-dir dist-electron --target node20 --external electron",
     "typecheck:app": "vue-tsc --noEmit -p tsconfig.app.json",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "preview": "vite preview",

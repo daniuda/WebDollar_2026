@@ -60,7 +60,22 @@ function createWindow() {
   })
 
   if (isDev) {
-    void win.loadURL('http://127.0.0.1:5173')
+    const devUrl = 'http://localhost:5173'
+    let retries = 0
+
+    const tryLoad = () => {
+      void win.loadURL(devUrl)
+    }
+
+    win.webContents.on('did-fail-load', (_event, errorCode, _errorDesc, validatedUrl) => {
+      // Retry only for the dev server URL while Vite is still booting.
+      if (validatedUrl.startsWith(devUrl) && errorCode === -102 && retries < 25) {
+        retries += 1
+        setTimeout(tryLoad, 300)
+      }
+    })
+
+    tryLoad()
     win.webContents.openDevTools({ mode: 'detach' })
   } else {
     void win.loadFile(join(__dirname, '../dist/index.html'))
