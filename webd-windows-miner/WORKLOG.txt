@@ -23,3 +23,9 @@ Checkpoint 002
 - Added wallet UI in the desktop dashboard for generate/import/export/encrypt/unlock flows.
 - Build verified successfully again with npm run build.
 - Next step in progress: worker auth, get-job and share-submit client flow for the desktop miner.
+
+Checkpoint 003
+- Implemented desktop worker API client for auth, get-job, worker-stats and share-submit flows.
+- Extended the dashboard with protocol diagnostics for token, workerId, current job, worker stats and manual share submit.
+- Build verified successfully again with npm run build.
+- Next step in progress: replace manual share submit with the real desktop mining loop and live hashrate/stats updates.

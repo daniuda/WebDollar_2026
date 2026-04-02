@@ -11,7 +11,8 @@ import {
   saveDesktopConfig,
 } from './services/desktopApi'
 import { fetchPoolStats } from './services/poolApi'
-import type { AppMeta, DesktopAppConfig, GeneratedWallet, PoolStats } from './types/miner'
+import { authWorker, fetchWorkerJob, fetchWorkerStats, submitWorkerShare } from './services/workerApi'
+import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolStats, ShareResult, WorkerStats } from './types/miner'
 
 const config = reactive<DesktopAppConfig>({
   poolUrl: 'http://127.0.0.1:3001',
@@ -25,6 +26,10 @@ const config = reactive<DesktopAppConfig>({
 const meta = ref<AppMeta>({ version: '0.001', platform: 'win32' })
 const stats = ref<PoolStats | null>(null)
 const currentWallet = ref<GeneratedWallet | null>(null)
+const authResult = ref<AuthResult | null>(null)
+const currentJob = ref<MiningJob | null>(null)
+const workerStats = ref<WorkerStats | null>(null)
+const lastShareResult = ref<ShareResult | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -34,6 +39,8 @@ const walletImportInput = ref('')
 const walletExportOutput = ref('')
 const walletPassword = ref('')
 const walletUnlockPassword = ref('')
+const manualNonce = ref('0')
+const manualHash = ref('')
 const activityLog = ref<string[]>([
   'Bootstrap Windows miner: config persistence ready.',
   'Pool stats fetch will validate backend connectivity.',
@@ -224,6 +231,89 @@ async function refreshPoolStats() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Cannot fetch pool stats.'
     pushLog(`Pool refresh failed: ${error.value}`)
+  }
+}
+
+async function runWorkerAuth() {
+  if (!config.walletAddress) {
+    error.value = 'Seteaza sau incarca un wallet inainte de auth.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    authResult.value = await authWorker(config.poolUrl, config.walletAddress, config.poolKey, authResult.value?.workerId ?? '')
+    success.value = `Worker auth reusit: ${authResult.value.workerId}`
+    pushLog(`Worker authenticated against ${config.poolUrl}.`)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Worker auth failed.'
+    pushLog(`Worker auth failed: ${error.value}`)
+  }
+}
+
+async function loadWorkerJob() {
+  if (!authResult.value?.token) {
+    error.value = 'Fa auth mai intai pentru a cere job.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    currentJob.value = await fetchWorkerJob(config.poolUrl, authResult.value.token)
+    manualNonce.value = String(currentJob.value.nonceStart)
+    success.value = `Job primit: ${currentJob.value.jobId}`
+    pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Fetch job failed.'
+    pushLog(`Fetch job failed: ${error.value}`)
+  }
+}
+
+async function loadWorkerStats() {
+  if (!authResult.value?.token) {
+    error.value = 'Fa auth mai intai pentru a citi worker stats.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    workerStats.value = await fetchWorkerStats(config.poolUrl, authResult.value.token)
+    success.value = 'Worker stats actualizate.'
+    pushLog(`Worker stats refreshed for ${workerStats.value.workerId}.`)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Fetch worker stats failed.'
+    pushLog(`Worker stats failed: ${error.value}`)
+  }
+}
+
+async function submitShare() {
+  if (!authResult.value?.token || !currentJob.value?.jobId) {
+    error.value = 'Ai nevoie de auth si job activ inainte de submit.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    lastShareResult.value = await submitWorkerShare(
+      config.poolUrl,
+      authResult.value.token,
+      currentJob.value.jobId,
+      Number(manualNonce.value),
+      manualHash.value,
+    )
+    success.value = `Share submit: ${lastShareResult.value.result}`
+    pushLog(`Manual share submit returned ${lastShareResult.value.result}.`)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Share submit failed.'
+    pushLog(`Share submit failed: ${error.value}`)
   }
 }
 
@@ -427,6 +517,95 @@ onMounted(() => {
           </label>
 
           <button class="ghost-btn full-btn" @click="unlockWallet">Unlock saved wallet</button>
+        </article>
+      </section>
+
+      <section class="layout-grid worker-grid">
+        <article class="panel form-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Worker protocol</p>
+              <h3>Auth, job and share flow</h3>
+            </div>
+            <p class="panel-meta">HTTP worker API validation before mining automation.</p>
+          </div>
+
+          <div class="hero-actions wallet-actions">
+            <button class="primary-btn" @click="runWorkerAuth">Auth worker</button>
+            <button class="ghost-btn" @click="loadWorkerJob">Get job</button>
+            <button class="ghost-btn" @click="loadWorkerStats">Worker stats</button>
+          </div>
+
+          <div class="wallet-summary-grid">
+            <div>
+              <p class="metric-label">Token</p>
+              <p class="metric-value small-value">{{ authResult?.token || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Worker ID</p>
+              <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Pool name</p>
+              <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
+            </div>
+          </div>
+
+          <div class="wallet-summary-grid">
+            <div>
+              <p class="metric-label">Current job</p>
+              <p class="metric-value small-value">{{ currentJob?.jobId || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Height</p>
+              <p class="metric-value small-value">{{ currentJob?.height ?? '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Nonce range</p>
+              <p class="metric-value small-value">{{ currentJob ? `${currentJob.nonceStart} - ${currentJob.nonceEnd}` : '-' }}</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel diagnostics-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Manual submit</p>
+              <h3>Share diagnostics</h3>
+            </div>
+            <p class="panel-meta">For endpoint validation before auto-mining.</p>
+          </div>
+
+          <label class="field">
+            <span>Nonce</span>
+            <input v-model="manualNonce" class="field-input" type="number" min="0" />
+          </label>
+
+          <label class="field">
+            <span>Hash</span>
+            <input v-model="manualHash" class="field-input" type="text" placeholder="hex share hash" />
+          </label>
+
+          <button class="primary-btn full-btn" @click="submitShare">Submit share</button>
+
+          <div class="diagnostics-grid encrypted-grid">
+            <div>
+              <p class="metric-label">Last submit result</p>
+              <p class="metric-value small-value">{{ lastShareResult?.result || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Last submit message</p>
+              <p class="metric-value small-value">{{ lastShareResult?.message || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Worker accepted</p>
+              <p class="metric-value small-value">{{ workerStats?.sharesAccepted ?? '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Worker rejected/stale</p>
+              <p class="metric-value small-value">{{ workerStats ? `${workerStats.sharesRejected} / ${workerStats.sharesStale}` : '-' }}</p>
+            </div>
+          </div>
         </article>
       </section>
     </main>
