@@ -268,6 +268,11 @@ button {
   box-shadow: 0 0 0 4px rgba(247, 178, 103, 0.14);
 }
 
+.field-textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+
 .toggle-field {
   display: flex;
   gap: 10px;
@@ -283,6 +288,28 @@ button {
   padding-left: 18px;
   display: grid;
   gap: 8px;
+}
+
+.wallet-grid {
+  margin-top: 2px;
+}
+
+.wallet-actions {
+  margin-bottom: 18px;
+}
+
+.wallet-summary-grid,
+.encrypted-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.full-btn {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 18px;
 }
 
 @media (max-width: 1180px) {

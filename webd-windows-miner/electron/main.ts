@@ -3,6 +3,7 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, importWalletRaw } from './wallet.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -10,6 +11,7 @@ const appVersion = app.getVersion()
 const defaultConfig = {
   poolUrl: 'http://127.0.0.1:3001',
   walletAddress: '',
+  walletEncrypted: '',
   poolKey: '',
   threadCount: 1,
   autoStart: false,
@@ -70,6 +72,12 @@ app.whenReady().then(() => {
     version: appVersion,
     platform: process.platform,
   }))
+
+  ipcMain.handle('wallet:generate', () => generateWallet())
+  ipcMain.handle('wallet:import-raw', async (_event: IpcMainInvokeEvent, raw: string) => importWalletRaw(raw))
+  ipcMain.handle('wallet:export-legacy', async (_event: IpcMainInvokeEvent, secretHex: string) => exportLegacyWallet(secretHex))
+  ipcMain.handle('wallet:encrypt-secret', async (_event: IpcMainInvokeEvent, secretHex: string, passphrase: string) => encryptSecret(secretHex, passphrase))
+  ipcMain.handle('wallet:decrypt-secret', async (_event: IpcMainInvokeEvent, envelopeJson: string, passphrase: string) => decryptSecret(envelopeJson, passphrase))
 
   ipcMain.handle('config:load', async () => loadConfig())
   ipcMain.handle('config:save', async (_event: IpcMainInvokeEvent, config: Partial<AppConfig>) => saveConfig(config))

@@ -15,3 +15,11 @@ Checkpoint 001
 Rule for future checkpoints
 - Save progress in this file at major milestones.
 - Commit and push the Windows app regularly so progress can be reviewed remotely.
+
+Checkpoint 002
+- Ported wallet compatibility layer from Android into Electron backend.
+- Implemented wallet generate, raw import, legacy .webd export, WIF/private-key import compatibility.
+- Implemented encrypted local wallet storage using AES-256-GCM + PBKDF2-SHA256.
+- Added wallet UI in the desktop dashboard for generate/import/export/encrypt/unlock flows.
+- Build verified successfully again with npm run build.
+- Next step in progress: worker auth, get-job and share-submit client flow for the desktop miner.
