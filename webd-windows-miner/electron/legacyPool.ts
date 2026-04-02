@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import * as https from 'node:https'
 import socketIo from 'socket.io-client'
 
 type LegacyJob = {
@@ -98,6 +99,7 @@ export class LegacyPoolBridge {
       reconnectionDelayMax: 10000,
       timeout: 30000,
       transports: ['polling', 'websocket'],
+      agent: new https.Agent({ rejectUnauthorized: false }),
       rejectUnauthorized: false,
     })
     this.socket = s

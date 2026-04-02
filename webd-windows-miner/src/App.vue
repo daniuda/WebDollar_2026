@@ -41,8 +41,6 @@ const walletImportInput = ref('')
 const walletExportOutput = ref('')
 const walletPassword = ref('')
 const walletUnlockPassword = ref('')
-const manualNonce = ref('0')
-const manualHash = ref('')
 const miningRunning = ref(false)
 const miningStatus = ref('Idle')
 const miningHashrate = ref(0)
@@ -295,7 +293,6 @@ async function loadWorkerJob() {
 
   try {
     currentJob.value = await fetchWorkerJob(config.poolUrl, authResult.value.token)
-    manualNonce.value = String(currentJob.value.nonceStart)
     success.value = `Job primit: ${currentJob.value.jobId}`
     pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
   } catch (err) {
@@ -320,31 +317,6 @@ async function loadWorkerStats() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Fetch worker stats failed.'
     pushLog(`Worker stats failed: ${error.value}`)
-  }
-}
-
-async function submitShare() {
-  if (!authResult.value?.token || !currentJob.value?.jobId) {
-    error.value = 'Ai nevoie de auth si job activ inainte de submit.'
-    return
-  }
-
-  error.value = ''
-  success.value = ''
-
-  try {
-    lastShareResult.value = await submitWorkerShare(
-      config.poolUrl,
-      authResult.value.token,
-      currentJob.value.jobId,
-      Number(manualNonce.value),
-      manualHash.value,
-    )
-    success.value = `Share submit: ${lastShareResult.value.result}`
-    pushLog(`Manual share submit returned ${lastShareResult.value.result}.`)
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Share submit failed.'
-    pushLog(`Share submit failed: ${error.value}`)
   }
 }
 
@@ -673,20 +645,14 @@ onMounted(() => {
         <article class="panel form-panel">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Worker protocol</p>
-              <h3>Auth, job and share flow</h3>
+              <p class="eyebrow">Mining controls</p>
+              <h3>Start and stop mining</h3>
             </div>
-            <p class="panel-meta">HTTP worker API validation before mining automation.</p>
+            <p class="panel-meta">Autentificarea si job-urile sunt gestionate automat la start.</p>
           </div>
 
           <div class="hero-actions wallet-actions">
-            <button class="primary-btn" @click="runWorkerAuth">Auth worker</button>
-            <button class="ghost-btn" @click="loadWorkerJob">Get job</button>
-            <button class="ghost-btn" @click="loadWorkerStats">Worker stats</button>
-          </div>
-
-          <div class="hero-actions wallet-actions">
-            <button class="primary-btn" :disabled="miningRunning" @click="startMiningLoop">Start auto mining</button>
+            <button class="primary-btn" :disabled="miningRunning" @click="startMiningLoop">Start mining</button>
             <button class="ghost-btn" :disabled="!miningRunning" @click="stopMiningLoop">Stop mining</button>
           </div>
 
@@ -751,23 +717,11 @@ onMounted(() => {
         <article class="panel diagnostics-panel">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Manual submit</p>
-              <h3>Share diagnostics</h3>
+              <p class="eyebrow">Worker session</p>
+              <h3>Mining diagnostics</h3>
             </div>
-            <p class="panel-meta">For endpoint validation before auto-mining.</p>
+            <p class="panel-meta">Status-ul workerului si al ultimelor share-uri.</p>
           </div>
-
-          <label class="field">
-            <span>Nonce</span>
-            <input v-model="manualNonce" class="field-input" type="number" min="0" />
-          </label>
-
-          <label class="field">
-            <span>Hash</span>
-            <input v-model="manualHash" class="field-input" type="text" placeholder="hex share hash" />
-          </label>
-
-          <button class="primary-btn full-btn" @click="submitShare">Submit share</button>
 
           <div class="diagnostics-grid encrypted-grid">
             <div>
@@ -777,6 +731,14 @@ onMounted(() => {
             <div>
               <p class="metric-label">Last submit message</p>
               <p class="metric-value small-value">{{ lastShareResult?.message || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Worker ID</p>
+              <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Pool name</p>
+              <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
             </div>
             <div>
               <p class="metric-label">Worker accepted</p>
