@@ -71,6 +71,35 @@ function bytesFromAny(v: any): Buffer {
   return Buffer.alloc(0)
 }
 
+function decodeWebdBase64(input: string): Buffer {
+  // WebDollar replaces O->#, l->@, /->$ in base64 representation.
+  const normalized = input
+    .replace(/#/g, 'O')
+    .replace(/@/g, 'l')
+    .replace(/\$/g, '/')
+  return Buffer.from(normalized, 'base64')
+}
+
+function getUnencodedAddressHexFromWalletAddress(walletAddress: string): string {
+  try {
+    const raw = decodeWebdBase64(walletAddress.trim())
+    // AddressWIF bytes format: WEBD$ prefix(4) + version(1) + addr(20) + checksum(4) + suffix(1)
+    if (raw.length < 30) return ''
+
+    const prefix = raw.subarray(0, 4)
+    const suffix = raw.subarray(raw.length - 1)
+    if (!prefix.equals(Buffer.from([0x58, 0x40, 0x43, 0xfe])) || suffix[0] !== 0xff) {
+      return ''
+    }
+
+    const unencoded = raw.subarray(5, 25)
+    if (unencoded.length !== 20) return ''
+    return unencoded.toString('hex')
+  } catch {
+    return ''
+  }
+}
+
 function parseLegacyWork(payload: any): LegacyJob | null {
   const work = payload?.work ?? payload
   if (!work) return null
@@ -239,11 +268,14 @@ export class LegacyPoolBridge {
 
   private sendHello(walletAddress: string) {
     if (!this.socket || !this.parsed) return
+    const unencodedAddressHex = getUnencodedAddressHexFromWalletAddress(walletAddress)
+
     this.socket.emit('mining-pool/hello-pool', {
       message: randomBytes(32),
       pool: Buffer.from(this.parsed.poolPublicKeyHex, 'hex'),
       minerAddress: walletAddress,
-      addresses: [],
+      // For PoS pools, server-side work generation expects minerInstance.addresses.
+      addresses: unencodedAddressHex ? [unencodedAddressHex] : [],
     })
   }
 
