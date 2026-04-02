@@ -1,8 +1,13 @@
 import { randomBytes } from 'node:crypto'
-import socketIo from 'socket.io-client'
+
+// Use require() so tsup emits a bare require() and does NOT wrap this CJS-only
+// module with __toESM().  With `import socketIo from 'socket.io-client'`, tsup
+// wraps it and socketIo becomes { default: fn } instead of fn itself, causing:
+//   TypeError: Cannot read properties of undefined (reading 'length')
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const socketIo: (url: string, opts?: Record<string, unknown>) => any = require('socket.io-client')
 
 // Pool uses a self-signed TLS cert; disable validation for the whole miner process.
-// This is intentional: the miner is a low-security desktop tool, not a web server.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 type LegacyJob = {
