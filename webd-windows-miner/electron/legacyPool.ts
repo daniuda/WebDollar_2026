@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto'
-import * as https from 'node:https'
 import socketIo from 'socket.io-client'
+
+// Pool uses a self-signed TLS cert; disable validation for the whole miner process.
+// This is intentional: the miner is a low-security desktop tool, not a web server.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 type LegacyJob = {
   jobId: string
@@ -38,16 +41,14 @@ function parsePoolAddress(poolAddress: string): ParsedPoolAddress | null {
 }
 
 /**
- * The Node-WebDollar pool server (socket.io 2.x) immediately disconnects
- * any connection that does not carry these query params.
- * nodeConsensusType=1 (NODE_CONSENSUS_SERVER) is mandatory when connecting
- * to a pool node, otherwise the pool drops the socket without registering
- * the hello-pool event handler.
+ * Build the socket.io-client 2.x `query` STRING for the Node-WebDollar pool.
+ * The pool server immediately disconnects sockets without msg=HelloNode and
+ * nodeConsensusType=1 (NODE_CONSENSUS_SERVER).  Query is passed as a pre-encoded
+ * string so engine.io-client 3.x does not try to JSON-clone it internally.
  */
-function buildPoolUrl(poolUrl: string): string {
+function buildQueryString(): string {
   const uuid = randomBytes(16).toString('hex')
-  const sep = poolUrl.includes('?') ? '&' : '?'
-  return `${poolUrl}${sep}msg=HelloNode&version=1.3.24&uuid=${uuid}&nodeType=0&nodeConsensusType=1`
+  return `msg=HelloNode&version=1.3.24&uuid=${uuid}&nodeType=0&nodeConsensusType=1`
 }
 
 function bytesFromAny(v: any): Buffer {
@@ -105,15 +106,19 @@ export class LegacyPoolBridge {
     this.lastError = ''
     this.lastJob = null
 
-    const s = socketIo(buildPoolUrl(parsed.poolUrl), {
+    // Pass query params as a PRE-ENCODED STRING via the `query` option.
+    // Embedding them in the URL causes engine.io-client 3.x to clone the query
+    // string character-by-character, producing a numeric-indexed object that
+    // later throws "Cannot read properties of undefined (reading 'length')".
+    const s = socketIo(parsed.poolUrl, {
+      forceNew: true,
       reconnection: true,
       reconnectionAttempts: Number.MAX_SAFE_INTEGER,
       reconnectionDelay: 3000,
       reconnectionDelayMax: 10000,
       timeout: 30000,
       transports: ['polling', 'websocket'],
-      agent: new https.Agent({ rejectUnauthorized: false }),
-      rejectUnauthorized: false,
+      query: buildQueryString(),
     })
     this.socket = s
 
