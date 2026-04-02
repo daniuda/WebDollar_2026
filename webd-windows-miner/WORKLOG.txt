@@ -132,3 +132,9 @@ Checklist salvari
 - [x] ETA payout implemented from reward growth and configurable target.
 - [x] No-job watchdog implemented with warning banner and activity log signal.
 - [x] Build verified successfully after full implementation.
+
+Checkpoint 018
+- Fixed mining loop reliability issue where mining could stop after worker stats refresh or transient share/session errors.
+- Converted per-iteration errors into auto-recovery flow (`Recovering...`) instead of stopping the whole miner.
+- On transient errors, session/job is reset and miner retries auth/job automatically, without needing manual Start button again.
+- Build verified successfully after resilience update.

@@ -483,6 +483,10 @@ function stopHashrateMeter() {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function ensureAuthAndJob(): Promise<boolean> {
   if (!authResult.value?.token) {
     await runWorkerAuth()
@@ -518,64 +522,71 @@ async function startMiningLoop() {
 
   try {
     while (!miningStopRequested) {
-      const ready = await ensureAuthAndJob()
-      if (!ready) {
-        miningStatus.value = 'Waiting auth/job...'
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-        continue
-      }
+      try {
+        const ready = await ensureAuthAndJob()
+        if (!ready) {
+          miningStatus.value = 'Waiting auth/job...'
+          await sleep(1500)
+          continue
+        }
 
-      if (!currentJob.value || !authResult.value?.token) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        continue
-      }
+        if (!currentJob.value || !authResult.value?.token) {
+          await sleep(500)
+          continue
+        }
 
-      if (currentJob.value.nonceEnd <= currentJob.value.nonceStart) {
-        // PoS jobs often expose no PoW nonce range, so hashrate stays at 0 by design.
-        miningStatus.value = `PoS job ${currentJob.value.height} (no PoW range)`
-        await new Promise((resolve) => setTimeout(resolve, 1200))
+        if (currentJob.value.nonceEnd <= currentJob.value.nonceStart) {
+          // PoS jobs often expose no PoW nonce range, so hashrate stays at 0 by design.
+          miningStatus.value = `PoS job ${currentJob.value.height} (no PoW range)`
+          await sleep(1200)
+          currentJob.value = null
+          continue
+        }
+
+        miningStatus.value = `Mining height ${currentJob.value.height}`
+        const found = await mineRange(
+          currentJob.value,
+          () => { hashCounter.value += 1 },
+          () => miningStopRequested,
+        )
+
+        if (miningStopRequested) break
+
+        if (!found) {
+          currentJob.value = null
+          continue
+        }
+
+        const submit = await submitWorkerShare(
+          config.poolUrl,
+          authResult.value.token,
+          currentJob.value.jobId,
+          found.nonce,
+          found.hashHex,
+        )
+
+        lastShareResult.value = submit
+        miningLastResult.value = submit.result
+
+        if (submit.result === 'accepted') miningAccepted.value += 1
+        else if (submit.result === 'stale') miningStale.value += 1
+        else miningRejected.value += 1
+
+        pushLog(`Auto share ${submit.result} (nonce ${found.nonce}).`)
+        await loadWorkerStats()
         currentJob.value = null
-        continue
-      }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Mining step failed.'
+        error.value = msg
+        miningStatus.value = 'Recovering...'
+        pushLog(`Mining transient error: ${msg}`)
 
-      miningStatus.value = `Mining height ${currentJob.value.height}`
-      const found = await mineRange(
-        currentJob.value,
-        () => { hashCounter.value += 1 },
-        () => miningStopRequested,
-      )
-
-      if (miningStopRequested) break
-
-      if (!found) {
+        // Drop session/job and retry automatically without forcing manual restart.
+        authResult.value = null
         currentJob.value = null
-        continue
+        await sleep(1500)
       }
-
-      const submit = await submitWorkerShare(
-        config.poolUrl,
-        authResult.value.token,
-        currentJob.value.jobId,
-        found.nonce,
-        found.hashHex,
-      )
-
-      lastShareResult.value = submit
-      miningLastResult.value = submit.result
-
-      if (submit.result === 'accepted') miningAccepted.value += 1
-      else if (submit.result === 'stale') miningStale.value += 1
-      else miningRejected.value += 1
-
-      pushLog(`Auto share ${submit.result} (nonce ${found.nonce}).`)
-      await loadWorkerStats()
-      currentJob.value = null
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Mining loop failed.'
-    error.value = msg
-    miningStatus.value = 'Error'
-    pushLog(`Mining error: ${msg}`)
   } finally {
     miningRunning.value = false
     miningStatus.value = 'Stopped'
