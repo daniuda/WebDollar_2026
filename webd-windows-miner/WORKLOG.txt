@@ -102,3 +102,10 @@ Checkpoint 015 (Baseline)
 - First working mining baseline locked as the reference version for future development.
 - Decision recorded: from now on, all new work starts from this working baseline.
 - All changes up to this point saved and pushed.
+
+Checkpoint 016
+- Switched UI/config behavior to PoS-only single worker mode: thread count is fixed to 1 in renderer and Electron config persistence.
+- Replaced editable Threads field with explicit PoS single-worker mode indicator.
+- Added wallet value section in mining diagnostics (pending, confirmed, total WEBD).
+- Legacy bridge now stores reward/confirmed values from hello-pool answer and exposes them via worker stats.
+- Build verified successfully after these improvements.

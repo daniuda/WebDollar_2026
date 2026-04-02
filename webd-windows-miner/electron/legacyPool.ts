@@ -135,6 +135,8 @@ export class LegacyPoolBridge {
   private sharesAccepted = 0
   private sharesRejected = 0
   private sharesStale = 0
+  private rewardPending = 0
+  private rewardConfirmed = 0
 
   async connect(poolAddress: string, walletAddress: string): Promise<{ token: string; workerId: string; poolName: string; poolFee: number }> {
     if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
@@ -159,6 +161,8 @@ export class LegacyPoolBridge {
     this.parsed = parsed
     this.lastError = ''
     this.lastJob = null
+    this.rewardPending = 0
+    this.rewardConfirmed = 0
 
     // Pass query as an OBJECT, exactly as the official Node-WebDollar miner client does.
     // Polling (HTTP) is blocked/failing on this pool; use websocket only.
@@ -237,6 +241,9 @@ export class LegacyPoolBridge {
           return
         }
 
+        this.rewardPending = Number(answer?.reward ?? 0)
+        this.rewardConfirmed = Number(answer?.confirmed ?? 0)
+
         // Step 3 of the 3-way handshake: confirm we accepted the pool's answer.
         // Without this, the pool never calls addConnectedMinerPool and won't send work.
         s.emit('mining-pool/hello-pool/answer/confirmation', { result: true })
@@ -264,6 +271,8 @@ export class LegacyPoolBridge {
     }
     this.connected = false
     this.lastJob = null
+    this.rewardPending = 0
+    this.rewardConfirmed = 0
   }
 
   private sendHello(walletAddress: string) {
@@ -371,8 +380,8 @@ export class LegacyPoolBridge {
       sharesAccepted: this.sharesAccepted,
       sharesRejected: this.sharesRejected,
       sharesStale: this.sharesStale,
-      rewardPending: 0,
-      rewardConfirmed: 0,
+      rewardPending: this.rewardPending,
+      rewardConfirmed: this.rewardConfirmed,
     }
   }
 

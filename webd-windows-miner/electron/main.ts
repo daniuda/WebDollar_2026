@@ -34,14 +34,14 @@ async function loadConfig(): Promise<AppConfig> {
   try {
     const raw = await readFile(configPath, 'utf8')
     const parsed = JSON.parse(raw) as Partial<AppConfig>
-    return { ...defaultConfig, ...parsed }
+    return { ...defaultConfig, ...parsed, threadCount: 1 }
   } catch {
     return { ...defaultConfig }
   }
 }
 
 async function saveConfig(config: Partial<AppConfig>): Promise<AppConfig> {
-  const nextConfig = { ...(await loadConfig()), ...config }
+  const nextConfig = { ...(await loadConfig()), ...config, threadCount: 1 }
   const configPath = await getConfigPath()
   await writeFile(configPath, JSON.stringify(nextConfig, null, 2), 'utf8')
   return nextConfig

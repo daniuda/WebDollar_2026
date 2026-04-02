@@ -25,14 +25,14 @@ function loadLocalConfig(): DesktopAppConfig {
     const raw = localStorage.getItem(CONFIG_KEY)
     if (!raw) return { ...fallbackConfig }
     const parsed = JSON.parse(raw) as Partial<DesktopAppConfig>
-    return { ...fallbackConfig, ...parsed }
+    return { ...fallbackConfig, ...parsed, threadCount: 1 }
   } catch {
     return { ...fallbackConfig }
   }
 }
 
 function saveLocalConfig(config: Partial<DesktopAppConfig>): DesktopAppConfig {
-  const merged = { ...loadLocalConfig(), ...config }
+  const merged = { ...loadLocalConfig(), ...config, threadCount: 1 }
   localStorage.setItem(CONFIG_KEY, JSON.stringify(merged))
   return merged
 }

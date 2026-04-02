@@ -75,6 +75,19 @@ const summaryCards = computed<Array<{ label: string; value: string }>>(() => {
   ]
 })
 
+const walletValueCards = computed(() => {
+  const pending = Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0)
+  const confirmed = Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0)
+  const total = pending + confirmed
+
+  const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
+  return {
+    pending: fmt(pending),
+    confirmed: fmt(confirmed),
+    total: fmt(total),
+  }
+})
+
 function pushLog(message: string) {
   // Avoid inserting the same message repeatedly at the top of the activity log.
   if (activityLog.value[0] === message) return
@@ -108,6 +121,7 @@ async function hydrate() {
     ])
 
     Object.assign(config, savedConfig)
+    config.threadCount = 1
     if (!config.poolUrl.trim()) {
       config.poolUrl = getDefaultPoolAddress()
     }
@@ -144,8 +158,10 @@ async function persistConfig() {
   success.value = ''
 
   try {
-    const saved = await saveDesktopConfig({ ...config })
+    config.threadCount = 1
+    const saved = await saveDesktopConfig({ ...config, threadCount: 1 })
     Object.assign(config, saved)
+    config.threadCount = 1
     success.value = 'Config saved locally.'
     pushLog(`Saved config for pool ${saved.poolUrl}.`)
   } catch (err) {
@@ -538,8 +554,8 @@ onMounted(() => {
 
           <div class="field-row">
             <label class="field compact-field">
-              <span>Threads</span>
-              <input v-model.number="config.threadCount" class="field-input" type="number" min="1" max="64" />
+              <span>Mining mode</span>
+              <input class="field-input" type="text" value="PoS single worker" readonly />
             </label>
 
             <label class="toggle-field">
@@ -736,6 +752,21 @@ onMounted(() => {
               <h3>Mining diagnostics</h3>
             </div>
             <p class="panel-meta">Status-ul workerului si al ultimelor share-uri.</p>
+          </div>
+
+          <div class="diagnostics-grid encrypted-grid">
+            <div>
+              <p class="metric-label">Wallet pending</p>
+              <p class="metric-value small-value">{{ walletValueCards.pending }} WEBD</p>
+            </div>
+            <div>
+              <p class="metric-label">Wallet confirmed</p>
+              <p class="metric-value small-value">{{ walletValueCards.confirmed }} WEBD</p>
+            </div>
+            <div>
+              <p class="metric-label">Wallet total</p>
+              <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
+            </div>
           </div>
 
           <div class="diagnostics-grid encrypted-grid">
