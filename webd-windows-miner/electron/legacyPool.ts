@@ -97,7 +97,7 @@ export class LegacyPoolBridge {
       reconnectionDelay: 3000,
       reconnectionDelayMax: 10000,
       timeout: 30000,
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       rejectUnauthorized: false,
     })
     this.socket = s
@@ -113,7 +113,12 @@ export class LegacyPoolBridge {
     })
 
     s.on('connect_error', (err: any) => {
-      const reason = String(err?.message ?? err ?? 'unknown')
+      const reason = [
+        err?.message,
+        err?.description,
+        err?.type,
+        err?.context?.status,
+      ].filter(Boolean).join(' | ') || String(err ?? 'unknown')
       this.lastError = `Eroare conectare: ${reason}`
       this.connected = false
     })

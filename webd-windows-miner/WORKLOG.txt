@@ -79,3 +79,9 @@ Checkpoint 011
 - Set websocket-first transport order and disabled strict TLS rejection for legacy endpoints.
 - Added TypeScript shim for legacy socket client package to keep strict build green.
 - Build verified successfully after dependency and bridge updates.
+
+Checkpoint 012
+- Aligned Windows legacy client with the Android compatibility baseline by switching Socket.IO client to version 1.0.1.
+- Restored polling-first transport order for legacy connection attempts.
+- Improved `connect_error` reporting to include message, description, type and status when available.
+- Build verified successfully after the legacy downgrade.
