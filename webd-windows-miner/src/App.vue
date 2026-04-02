@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   decryptDesktopSecret,
   encryptDesktopSecret,
@@ -11,6 +11,7 @@ import {
   saveDesktopConfig,
 } from './services/desktopApi'
 import { fetchPoolStats } from './services/poolApi'
+import { mineRange } from './services/hashEngine'
 import { authWorker, fetchWorkerJob, fetchWorkerStats, submitWorkerShare } from './services/workerApi'
 import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolStats, ShareResult, WorkerStats } from './types/miner'
 
@@ -41,6 +42,16 @@ const walletPassword = ref('')
 const walletUnlockPassword = ref('')
 const manualNonce = ref('0')
 const manualHash = ref('')
+const miningRunning = ref(false)
+const miningStatus = ref('Idle')
+const miningHashrate = ref(0)
+const miningAccepted = ref(0)
+const miningRejected = ref(0)
+const miningStale = ref(0)
+const miningLastResult = ref('-')
+const hashCounter = ref(0)
+let miningStopRequested = false
+let hashrateTimer: ReturnType<typeof setInterval> | null = null
 const activityLog = ref<string[]>([
   'Bootstrap Windows miner: config persistence ready.',
   'Pool stats fetch will validate backend connectivity.',
@@ -317,6 +328,124 @@ async function submitShare() {
   }
 }
 
+function startHashrateMeter() {
+  stopHashrateMeter()
+  hashrateTimer = setInterval(() => {
+    miningHashrate.value = hashCounter.value
+    hashCounter.value = 0
+  }, 1000)
+}
+
+function stopHashrateMeter() {
+  if (hashrateTimer) {
+    clearInterval(hashrateTimer)
+    hashrateTimer = null
+  }
+}
+
+async function ensureAuthAndJob(): Promise<boolean> {
+  if (!authResult.value?.token) {
+    await runWorkerAuth()
+  }
+
+  if (!authResult.value?.token) {
+    return false
+  }
+
+  if (!currentJob.value || Date.now() > currentJob.value.expireAt) {
+    await loadWorkerJob()
+  }
+
+  return !!currentJob.value && !!authResult.value?.token
+}
+
+async function startMiningLoop() {
+  if (miningRunning.value) return
+  if (!config.walletAddress) {
+    error.value = 'Trebuie wallet address inainte de start mining.'
+    return
+  }
+
+  miningStopRequested = false
+  miningRunning.value = true
+  miningStatus.value = 'Starting...'
+  error.value = ''
+  success.value = ''
+  startHashrateMeter()
+  pushLog('Mining loop started.')
+
+  try {
+    while (!miningStopRequested) {
+      const ready = await ensureAuthAndJob()
+      if (!ready) {
+        miningStatus.value = 'Waiting auth/job...'
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        continue
+      }
+
+      if (!currentJob.value || !authResult.value?.token) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        continue
+      }
+
+      miningStatus.value = `Mining height ${currentJob.value.height}`
+      const found = await mineRange(
+        currentJob.value,
+        () => { hashCounter.value += 1 },
+        () => miningStopRequested,
+      )
+
+      if (miningStopRequested) break
+
+      if (!found) {
+        currentJob.value = null
+        continue
+      }
+
+      const submit = await submitWorkerShare(
+        config.poolUrl,
+        authResult.value.token,
+        currentJob.value.jobId,
+        found.nonce,
+        found.hashHex,
+      )
+
+      lastShareResult.value = submit
+      miningLastResult.value = submit.result
+
+      if (submit.result === 'accepted') miningAccepted.value += 1
+      else if (submit.result === 'stale') miningStale.value += 1
+      else miningRejected.value += 1
+
+      pushLog(`Auto share ${submit.result} (nonce ${found.nonce}).`)
+      await loadWorkerStats()
+      currentJob.value = null
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Mining loop failed.'
+    error.value = msg
+    miningStatus.value = 'Error'
+    pushLog(`Mining error: ${msg}`)
+  } finally {
+    miningRunning.value = false
+    miningStatus.value = 'Stopped'
+    stopHashrateMeter()
+    miningHashrate.value = 0
+    hashCounter.value = 0
+  }
+}
+
+function stopMiningLoop() {
+  miningStopRequested = true
+  miningStatus.value = 'Stopping...'
+  pushLog('Stop requested for mining loop.')
+}
+
+onBeforeUnmount(() => {
+  stopMiningLoop()
+  stopHashrateMeter()
+})
+
 onMounted(() => {
   void hydrate()
 })
@@ -534,6 +663,38 @@ onMounted(() => {
             <button class="primary-btn" @click="runWorkerAuth">Auth worker</button>
             <button class="ghost-btn" @click="loadWorkerJob">Get job</button>
             <button class="ghost-btn" @click="loadWorkerStats">Worker stats</button>
+          </div>
+
+          <div class="hero-actions wallet-actions">
+            <button class="primary-btn" :disabled="miningRunning" @click="startMiningLoop">Start auto mining</button>
+            <button class="ghost-btn" :disabled="!miningRunning" @click="stopMiningLoop">Stop mining</button>
+          </div>
+
+          <div class="wallet-summary-grid">
+            <div>
+              <p class="metric-label">Mining status</p>
+              <p class="metric-value small-value">{{ miningStatus }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Hashrate</p>
+              <p class="metric-value small-value">{{ miningHashrate }} H/s</p>
+            </div>
+            <div>
+              <p class="metric-label">Last result</p>
+              <p class="metric-value small-value">{{ miningLastResult }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Accepted</p>
+              <p class="metric-value small-value">{{ miningAccepted }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Rejected</p>
+              <p class="metric-value small-value">{{ miningRejected }}</p>
+            </div>
+            <div>
+              <p class="metric-label">Stale</p>
+              <p class="metric-value small-value">{{ miningStale }}</p>
+            </div>
           </div>
 
           <div class="wallet-summary-grid">

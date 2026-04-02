@@ -29,3 +29,10 @@ Checkpoint 003
 - Extended the dashboard with protocol diagnostics for token, workerId, current job, worker stats and manual share submit.
 - Build verified successfully again with npm run build.
 - Next step in progress: replace manual share submit with the real desktop mining loop and live hashrate/stats updates.
+
+Checkpoint 004
+- Added automated desktop mining loop (start/stop) using auth -> get job -> hash range -> submit share cycle.
+- Added CPU hash engine service (double SHA-256 placeholder parity with Android MVP logic) and live hashrate meter.
+- Added runtime mining counters in UI: accepted/rejected/stale shares, status and last result.
+- Build verified successfully again with npm run build.
+- Next step: harden miner loop with retries/backoff tuning and then run practical test session before switching back to Android fixes.
