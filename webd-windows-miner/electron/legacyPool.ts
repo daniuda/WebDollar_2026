@@ -108,9 +108,22 @@ export class LegacyPoolBridge {
   private sharesStale = 0
 
   async connect(poolAddress: string, walletAddress: string): Promise<{ token: string; workerId: string; poolName: string; poolFee: number }> {
+    if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
+      throw new Error('Adresa pool legacy lipseste sau este invalida')
+    }
+
+    if (typeof walletAddress !== 'string' || !walletAddress.trim()) {
+      throw new Error('Wallet address lipseste pentru conectarea la pool')
+    }
+
     const parsed = parsePoolAddress(poolAddress)
     if (!parsed) {
       throw new Error('Adresa pool legacy invalida')
+    }
+
+    const poolUrl = parsed.poolUrl?.trim()
+    if (!poolUrl || !/^https?:\/\//i.test(poolUrl)) {
+      throw new Error(`URL pool legacy invalid: ${String(parsed.poolUrl ?? '')}`)
     }
 
     this.disconnect()
@@ -120,15 +133,21 @@ export class LegacyPoolBridge {
 
     // Pass query as an OBJECT, exactly as the official Node-WebDollar miner client does.
     // Polling (HTTP) is blocked/failing on this pool; use websocket only.
-    const s = socketIo(parsed.poolUrl, {
-      reconnection: true,
-      reconnectionAttempts: Number.MAX_SAFE_INTEGER,
-      reconnectionDelay: 3000,
-      reconnectionDelayMax: 10000,
-      timeout: 30000,
-      transports: ['websocket'],
-      query: buildQuery(),
-    })
+    let s: any
+    try {
+      s = socketIo(poolUrl, {
+        reconnection: true,
+        reconnectionAttempts: Number.MAX_SAFE_INTEGER,
+        reconnectionDelay: 3000,
+        reconnectionDelayMax: 10000,
+        timeout: 30000,
+        transports: ['websocket'],
+        query: buildQuery(),
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? `${err.message}${err.stack ? `\n${err.stack}` : ''}` : String(err)
+      throw new Error(`Init socket.io legacy esuat pentru ${poolUrl}: ${msg}`)
+    }
     this.socket = s
 
     // Pool server sends HelloNode after accepting the connection and registering
