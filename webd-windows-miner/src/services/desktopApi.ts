@@ -1,33 +1,95 @@
 import type { AppMeta, DesktopAppConfig, GeneratedWallet } from '../types/miner'
 
+const CONFIG_KEY = 'webd_windows_miner_config'
+
+const fallbackConfig: DesktopAppConfig = {
+  poolUrl: 'http://127.0.0.1:3001',
+  walletAddress: '',
+  walletEncrypted: '',
+  poolKey: '',
+  threadCount: 1,
+  autoStart: false,
+}
+
+function hasDesktopApi(): boolean {
+  return typeof window !== 'undefined' && !!window.desktopApi
+}
+
+function getDesktopApi() {
+  return typeof window !== 'undefined' ? window.desktopApi : undefined
+}
+
+function loadLocalConfig(): DesktopAppConfig {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY)
+    if (!raw) return { ...fallbackConfig }
+    const parsed = JSON.parse(raw) as Partial<DesktopAppConfig>
+    return { ...fallbackConfig, ...parsed }
+  } catch {
+    return { ...fallbackConfig }
+  }
+}
+
+function saveLocalConfig(config: Partial<DesktopAppConfig>): DesktopAppConfig {
+  const merged = { ...loadLocalConfig(), ...config }
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(merged))
+  return merged
+}
+
 export function getDesktopMeta(): Promise<AppMeta> {
-  return window.desktopApi.getMeta()
+  const api = getDesktopApi()
+  if (api) return api.getMeta()
+  return Promise.resolve({ version: '0.001', platform: 'web' })
 }
 
 export function loadDesktopConfig(): Promise<DesktopAppConfig> {
-  return window.desktopApi.loadConfig()
+  const api = getDesktopApi()
+  if (api) return api.loadConfig()
+  return Promise.resolve(loadLocalConfig())
 }
 
 export function saveDesktopConfig(config: Partial<DesktopAppConfig>): Promise<DesktopAppConfig> {
-  return window.desktopApi.saveConfig(config)
+  const api = getDesktopApi()
+  if (api) return api.saveConfig(config)
+  return Promise.resolve(saveLocalConfig(config))
 }
 
 export function generateDesktopWallet(): Promise<GeneratedWallet> {
-  return window.desktopApi.generateWallet()
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet operations require Electron runtime.'))
+  }
+  return api.generateWallet()
 }
 
 export function importDesktopWalletRaw(raw: string): Promise<GeneratedWallet> {
-  return window.desktopApi.importWalletRaw(raw)
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet operations require Electron runtime.'))
+  }
+  return api.importWalletRaw(raw)
 }
 
 export function exportDesktopLegacyWallet(secretHex: string): Promise<string> {
-  return window.desktopApi.exportLegacyWallet(secretHex)
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet operations require Electron runtime.'))
+  }
+  return api.exportLegacyWallet(secretHex)
 }
 
 export function encryptDesktopSecret(secretHex: string, passphrase: string): Promise<string> {
-  return window.desktopApi.encryptSecret(secretHex, passphrase)
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet operations require Electron runtime.'))
+  }
+  return api.encryptSecret(secretHex, passphrase)
 }
 
 export function decryptDesktopSecret(envelopeJson: string, passphrase: string): Promise<string> {
-  return window.desktopApi.decryptSecret(envelopeJson, passphrase)
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet operations require Electron runtime.'))
+  }
+  return api.decryptSecret(envelopeJson, passphrase)
 }

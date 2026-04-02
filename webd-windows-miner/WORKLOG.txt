@@ -42,3 +42,9 @@ Checkpoint 005
 - Updated tsup scripts to externalize electron in both watch and build modes.
 - Added resilient dev URL retry logic in Electron main process to avoid transient Vite race (`ERR_CONNECTION_REFUSED`).
 - Verified `npm run dev` starts cleanly (only non-blocking DevTools Autofill warnings remain).
+
+Checkpoint 006
+- Fixed renderer hydration crash when desktop bridge is unavailable (`Cannot read properties of undefined (reading loadConfig)`).
+- Added resilient desktopApi fallback layer: config/meta now work with safe localStorage fallback when `window.desktopApi` is missing.
+- Wallet-only operations now return explicit Electron-runtime errors instead of hard crashing.
+- Build verified successfully again with npm run build.
