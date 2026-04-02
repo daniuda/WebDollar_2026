@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { io, type Socket } from 'socket.io-client'
+import socketIo from 'socket.io-client'
 
 type LegacyJob = {
   jobId: string
@@ -69,7 +69,7 @@ function parseLegacyWork(payload: any): LegacyJob | null {
 }
 
 export class LegacyPoolBridge {
-  private socket: Socket | null = null
+  private socket: any = null
   private parsed: ParsedPoolAddress | null = null
   private token = ''
   private workerId = ''
@@ -91,13 +91,14 @@ export class LegacyPoolBridge {
     this.lastError = ''
     this.lastJob = null
 
-    const s = io(parsed.poolUrl, {
+    const s = socketIo(parsed.poolUrl, {
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: Number.MAX_SAFE_INTEGER,
       reconnectionDelay: 3000,
       reconnectionDelayMax: 10000,
       timeout: 30000,
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
+      rejectUnauthorized: false,
     })
     this.socket = s
 
@@ -112,7 +113,8 @@ export class LegacyPoolBridge {
     })
 
     s.on('connect_error', (err: any) => {
-      this.lastError = `Eroare conectare: ${String(err?.message ?? err ?? 'unknown')}`
+      const reason = String(err?.message ?? err ?? 'unknown')
+      this.lastError = `Eroare conectare: ${reason}`
       this.connected = false
     })
 

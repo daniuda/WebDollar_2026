@@ -73,3 +73,9 @@ Checkpoint 010
 - Wired legacy IPC methods into preload and renderer services, so `pool/...` addresses now use legacy flow directly instead of depending on local REST backend.
 - Kept REST path support for non-legacy URLs and fallback behavior for mixed environments.
 - Build verified successfully after integrating legacy mode.
+
+Checkpoint 011
+- Addressed legacy connection instability (`xhr poll error`) by moving Socket.IO client to legacy-compatible major (2.x) and tuning options for legacy pools.
+- Set websocket-first transport order and disabled strict TLS rejection for legacy endpoints.
+- Added TypeScript shim for legacy socket client package to keep strict build green.
+- Build verified successfully after dependency and bridge updates.
