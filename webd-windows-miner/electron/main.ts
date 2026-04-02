@@ -3,12 +3,14 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, importWalletRaw } from './wallet.js'
+import { LegacyPoolBridge } from './legacyPool.js'
 
 const isDev = !app.isPackaged
 const appVersion = app.getVersion()
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+const legacyPool = new LegacyPoolBridge()
 const defaultConfig = {
   poolUrl: 'pool/1/1/1/SpyClub/0.0001/374d24d549e73f05280b239d96d7c6b28f15aabb5d41e89818b660a9ebc3276e/https:$$node.spyclub.ro:8080',
   walletAddress: '',
@@ -162,6 +164,16 @@ app.whenReady().then(() => {
   ipcMain.handle('wallet:export-legacy', async (_event: IpcMainInvokeEvent, secretHex: string) => exportLegacyWallet(secretHex))
   ipcMain.handle('wallet:encrypt-secret', async (_event: IpcMainInvokeEvent, secretHex: string, passphrase: string) => encryptSecret(secretHex, passphrase))
   ipcMain.handle('wallet:decrypt-secret', async (_event: IpcMainInvokeEvent, envelopeJson: string, passphrase: string) => decryptSecret(envelopeJson, passphrase))
+
+  ipcMain.handle('legacy:connect', async (_event: IpcMainInvokeEvent, poolAddress: string, walletAddress: string) => {
+    return legacyPool.connect(poolAddress, walletAddress)
+  })
+  ipcMain.handle('legacy:get-job', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getJob(token))
+  ipcMain.handle('legacy:submit-share', async (_event: IpcMainInvokeEvent, token: string, jobId: string, nonce: number, hashHex: string) => {
+    return legacyPool.submitShare(token, jobId, nonce, hashHex)
+  })
+  ipcMain.handle('legacy:get-worker-stats', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getWorkerStats(token))
+  ipcMain.handle('legacy:get-pool-stats', async () => legacyPool.getPoolStats())
 
   ipcMain.handle('config:load', async () => loadConfig())
   ipcMain.handle('config:save', async (_event: IpcMainInvokeEvent, config: Partial<AppConfig>) => saveConfig(config))

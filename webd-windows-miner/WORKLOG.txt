@@ -67,3 +67,9 @@ Checkpoint 009
 - Kept packaged renderer path resolution compatible with current dist layout.
 - Reordered legacy pool API candidates to try local REST backend first, reducing noisy 404 from remote legacy host.
 - Verified build and dev startup after changes.
+
+Checkpoint 010
+- Implemented direct Legacy Socket.IO bridge in Electron (parse pool address, hello-pool, get-work, new-work, work-done).
+- Wired legacy IPC methods into preload and renderer services, so `pool/...` addresses now use legacy flow directly instead of depending on local REST backend.
+- Kept REST path support for non-legacy URLs and fallback behavior for mixed environments.
+- Build verified successfully after integrating legacy mode.

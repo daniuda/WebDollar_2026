@@ -6,6 +6,10 @@ function normalizeBaseUrl(baseUrl: string): string {
   return resolvePoolApiCandidates(baseUrl)[0]
 }
 
+function isLegacyPool(baseUrl: string): boolean {
+  return baseUrl.trim().startsWith('pool/')
+}
+
 async function withBaseFallback<T>(baseUrl: string, call: (normalizedBase: string) => Promise<T>): Promise<T> {
   const candidates = resolvePoolApiCandidates(baseUrl)
   let lastError: unknown = null
@@ -29,6 +33,19 @@ async function withBaseFallback<T>(baseUrl: string, call: (normalizedBase: strin
 }
 
 export async function authWorker(baseUrl: string, walletAddress: string, poolKey: string, existingWorkerId = ''): Promise<AuthResult> {
+  if (isLegacyPool(baseUrl) && window.desktopApi?.legacyConnect) {
+    const legacy = await window.desktopApi.legacyConnect(baseUrl, walletAddress)
+    return {
+      token: legacy.token,
+      workerId: legacy.workerId,
+      reward: 0,
+      confirmed: 0,
+      poolName: legacy.poolName,
+      poolFee: legacy.poolFee,
+      keyRequired: false,
+    }
+  }
+
   const response = await withBaseFallback(baseUrl, (normalizedBase) => axios.post(`${normalizedBase}/worker/auth`, {
     walletAddress,
     workerId: existingWorkerId || undefined,
@@ -49,6 +66,10 @@ export async function authWorker(baseUrl: string, walletAddress: string, poolKey
 }
 
 export async function fetchWorkerJob(baseUrl: string, token: string): Promise<MiningJob> {
+  if (isLegacyPool(baseUrl) && window.desktopApi?.legacyGetJob) {
+    return window.desktopApi.legacyGetJob(token)
+  }
+
   const response = await withBaseFallback(baseUrl, (normalizedBase) => axios.get(`${normalizedBase}/worker/job`, {
     params: { token },
     timeout: 10_000,
@@ -68,6 +89,10 @@ export async function fetchWorkerJob(baseUrl: string, token: string): Promise<Mi
 }
 
 export async function submitWorkerShare(baseUrl: string, token: string, jobId: string, nonce: number, hash: string): Promise<ShareResult> {
+  if (isLegacyPool(baseUrl) && window.desktopApi?.legacySubmitShare) {
+    return window.desktopApi.legacySubmitShare(token, jobId, nonce, hash)
+  }
+
   const response = await withBaseFallback(baseUrl, (normalizedBase) => axios.post(`${normalizedBase}/worker/share`, {
     token,
     jobId,
@@ -84,6 +109,21 @@ export async function submitWorkerShare(baseUrl: string, token: string, jobId: s
 }
 
 export async function fetchWorkerStats(baseUrl: string, token: string): Promise<WorkerStats> {
+  if (isLegacyPool(baseUrl) && window.desktopApi?.legacyGetWorkerStats) {
+    const legacy = await window.desktopApi.legacyGetWorkerStats(token)
+    return {
+      workerId: legacy?.workerId ?? '',
+      walletAddress: legacy?.walletAddress ?? '',
+      lastSeen: legacy?.lastSeen ?? Date.now(),
+      online: legacy?.online ?? false,
+      sharesAccepted: legacy?.sharesAccepted ?? 0,
+      sharesRejected: legacy?.sharesRejected ?? 0,
+      sharesStale: legacy?.sharesStale ?? 0,
+      rewardPending: legacy?.rewardPending ?? 0,
+      rewardConfirmed: legacy?.rewardConfirmed ?? 0,
+    }
+  }
+
   const response = await withBaseFallback(baseUrl, (normalizedBase) => axios.get(`${normalizedBase}/worker/stats`, {
     params: { token },
     timeout: 10_000,
