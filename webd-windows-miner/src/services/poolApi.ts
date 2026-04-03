@@ -8,6 +8,91 @@ function unitsToWebd(units: number): number {
   return units / WEBD_UNITS
 }
 
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/,/g, '')
+    const n = Number(normalized)
+    return Number.isFinite(n) ? n : 0
+  }
+
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function normalizeAddress(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    // decode pool encoding: $ → /, # → O, @ → l
+    .replace(/#/g, 'O')
+    .replace(/\$/g, '/')
+    .replace(/@/g, 'l')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function getEntryAddress(entry: any): string {
+  return String(
+    entry?.address
+    ?? entry?.minerAddress
+    ?? entry?.walletAddress
+    ?? entry?.wallet
+    ?? '',
+  )
+}
+
+function extractMinerList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.miners)) return payload.miners
+  if (Array.isArray(payload?.data?.miners)) return payload.data.miners
+  if (Array.isArray(payload?.data)) return payload.data
+  return []
+}
+
+function mapEntryToReward(entry: any, address: string, source: string): PoolAddressReward {
+  const rewardTotalUnits = toNumber(entry?.reward_total ?? entry?.rewardTotal ?? entry?.reward)
+  const rewardConfirmedUnits = toNumber(entry?.reward_confirmed ?? entry?.rewardConfirmed ?? entry?.confirmed)
+  const rewardSentUnits = toNumber(entry?.reward_sent ?? entry?.rewardSent ?? entry?.sent)
+  const walletBalanceUnitsPrimary = toNumber(
+    entry?.totalPOSBalance
+    ?? entry?.total_pos_balance
+    ?? entry?.totalPOSBalanceUnits,
+  )
+  const walletBalanceUnitsFallback = toNumber(
+    entry?.balance
+    ?? entry?.balance_total
+    ?? entry?.balanceTotal
+    ?? entry?.wallet_balance
+    ?? entry?.walletBalance
+    ?? entry?.amount
+    ?? entry?.stake,
+  )
+  const walletBalanceWebdDirect = toNumber(
+    entry?.balanceWebd
+    ?? entry?.walletBalanceWebd,
+  )
+  const walletBalanceUnits = walletBalanceUnitsPrimary > 0 ? walletBalanceUnitsPrimary : walletBalanceUnitsFallback
+  const walletBalanceUnitsFromWebdDirect = walletBalanceWebdDirect > 0
+    ? Math.round(walletBalanceWebdDirect * WEBD_UNITS)
+    : walletBalanceUnits
+
+  return {
+    address,
+    rewardTotalUnits,
+    rewardConfirmedUnits,
+    rewardSentUnits,
+    walletBalanceUnits,
+    rewardTotalWebd: unitsToWebd(rewardTotalUnits),
+    rewardConfirmedWebd: unitsToWebd(rewardConfirmedUnits),
+    rewardSentWebd: unitsToWebd(rewardSentUnits),
+    walletBalanceWebd: unitsToWebd(walletBalanceUnitsFromWebdDirect),
+    source,
+  }
+}
+
 export async function fetchPoolStats(baseUrl: string): Promise<PoolStats> {
   if (baseUrl.trim().startsWith('pool/') && typeof window !== 'undefined' && window.desktopApi?.legacyGetPoolStats) {
     const legacyStats = await window.desktopApi.legacyGetPoolStats()
@@ -54,38 +139,31 @@ export async function fetchPoolAddressReward(baseUrl: string, walletAddress: str
   const address = walletAddress.trim()
   if (!address) return null
 
-  const primary = resolvePoolApiBase(baseUrl)
-  const candidates = [primary]
+  // Public miner stats must always be requested from the remote pool host,
+  // never from local fallback API.
+  const candidates = [resolvePoolApiBase(baseUrl)]
+  const normalizedTarget = normalizeAddress(address)
+  // Prefer the pool miners endpoint for wallet totals (e.g. totalPOSBalance).
+  const endpointPaths = ['/pools/miners', '/pools/all-miners']
   let lastError: unknown = null
 
   for (const candidate of candidates) {
-    try {
-      const response = await axios.get(`${candidate}/pools/all-miners`, {
-        timeout: 10_000,
-      })
+    for (const endpointPath of endpointPaths) {
+      try {
+        const response = await axios.get(`${candidate}${endpointPath}`, {
+          timeout: 10_000,
+        })
 
-      const list = Array.isArray(response.data) ? response.data : []
-      const found = list.find((entry: any) => String(entry?.address ?? '').trim() === address)
-      if (!found) {
-        continue
+        const list = extractMinerList(response.data)
+        const found = list.find((entry: any) => normalizeAddress(getEntryAddress(entry)) === normalizedTarget)
+        if (!found) {
+          continue
+        }
+
+        return mapEntryToReward(found, address, `${candidate}${endpointPath}`)
+      } catch (err) {
+        lastError = err
       }
-
-      const rewardTotalUnits = Number(found?.reward_total ?? 0)
-      const rewardConfirmedUnits = Number(found?.reward_confirmed ?? 0)
-      const rewardSentUnits = Number(found?.reward_sent ?? 0)
-
-      return {
-        address,
-        rewardTotalUnits,
-        rewardConfirmedUnits,
-        rewardSentUnits,
-        rewardTotalWebd: unitsToWebd(rewardTotalUnits),
-        rewardConfirmedWebd: unitsToWebd(rewardConfirmedUnits),
-        rewardSentWebd: unitsToWebd(rewardSentUnits),
-        source: candidate,
-      }
-    } catch (err) {
-      lastError = err
     }
   }
 

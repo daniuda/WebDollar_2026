@@ -75,9 +75,11 @@ export interface PoolAddressReward {
   rewardTotalUnits: number
   rewardConfirmedUnits: number
   rewardSentUnits: number
+  walletBalanceUnits: number
   rewardTotalWebd: number
   rewardConfirmedWebd: number
   rewardSentWebd: number
+  walletBalanceWebd: number
   source: string
 }
 

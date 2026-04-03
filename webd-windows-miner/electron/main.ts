@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage } from 'electron'
 import type { IpcMainInvokeEvent, NativeImage } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -47,6 +47,23 @@ async function saveConfig(config: Partial<AppConfig>): Promise<AppConfig> {
   const configPath = await getConfigPath()
   await writeFile(configPath, JSON.stringify(nextConfig, null, 2), 'utf8')
   return nextConfig
+}
+
+async function selectWalletFileRaw(): Promise<string | null> {
+  const result = await dialog.showOpenDialog({
+    title: 'Select .webd wallet file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'WebDollar Wallet', extensions: ['webd'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+
+  return readFile(result.filePaths[0], 'utf8')
 }
 
 function createWindow() {
@@ -177,12 +194,13 @@ app.whenReady().then(() => {
 
   ipcMain.handle('wallet:generate', () => generateWallet())
   ipcMain.handle('wallet:import-raw', async (_event: IpcMainInvokeEvent, raw: string) => importWalletRaw(raw))
+  ipcMain.handle('wallet:select-file-raw', async () => selectWalletFileRaw())
   ipcMain.handle('wallet:export-legacy', async (_event: IpcMainInvokeEvent, secretHex: string) => exportLegacyWallet(secretHex))
   ipcMain.handle('wallet:encrypt-secret', async (_event: IpcMainInvokeEvent, secretHex: string, passphrase: string) => encryptSecret(secretHex, passphrase))
   ipcMain.handle('wallet:decrypt-secret', async (_event: IpcMainInvokeEvent, envelopeJson: string, passphrase: string) => decryptSecret(envelopeJson, passphrase))
 
-  ipcMain.handle('legacy:connect', async (_event: IpcMainInvokeEvent, poolAddress: string, walletAddress: string) => {
-    return legacyPool.connect(poolAddress, walletAddress)
+  ipcMain.handle('legacy:connect', async (_event: IpcMainInvokeEvent, poolAddress: string, walletAddress: string, wallet?: { address: string; secretHex: string; publicKeyHex: string; unencodedAddressHex: string }) => {
+    return legacyPool.connect(poolAddress, walletAddress, wallet)
   })
   ipcMain.handle('legacy:get-job', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getJob(token))
   ipcMain.handle('legacy:submit-share', async (_event: IpcMainInvokeEvent, token: string, jobId: string, nonce: number, hashHex: string, hashes = 1, timeDiff = 0) => {

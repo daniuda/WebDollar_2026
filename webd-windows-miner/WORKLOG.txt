@@ -138,3 +138,27 @@ Checkpoint 018
 - Converted per-iteration errors into auto-recovery flow (`Recovering...`) instead of stopping the whole miner.
 - On transient errors, session/job is reset and miner retries auth/job automatically, without needing manual Start button again.
 - Build verified successfully after resilience update.
+
+Checkpoint 019
+- Implemented direct wallet import from local `.webd` file picker in Electron (Open File dialog + `.webd` filter).
+- Added new IPC bridge method (`wallet:select-file-raw`) exposed to renderer via preload and desktopApi wrapper.
+- Updated wallet UI: replaced raw-text import workflow with explicit `Import .webd file` action.
+- Kept legacy parser compatibility in backend, so selected file content is validated by existing wallet import logic.
+- Build verified successfully after the file-import flow update.
+
+Checkpoint 020
+- Fixed legacy PoS auth IPC issue (`An object could not be cloned`) by sending a plain wallet object instead of Vue reactive proxy.
+- Disabled legacy auto-connect on startup when only wallet address exists but wallet is not unlocked/imported in runtime.
+- Forced fresh legacy auth session at Start mining so submit-share is always bound to the currently unlocked wallet.
+- Build verified successfully after the PoS auth/session fixes.
+
+Checkpoint 021
+- Improved wallet/payout visibility in UI when pool public miner endpoints are missing or inconsistent.
+- Added robust pool reward fetch logic with endpoint fallback (`/pools/all-miners` and `/pools/miners`) and flexible payload parsing.
+- Added UI fallback for payout cards to show worker-session values instead of `-` when pool payout list is unavailable.
+- Build verified successfully after wallet value display hardening.
+Checkpoint 022
+- Updated wallet value cards to prioritize historical pool totals, not just current mining-session stats.
+- Wallet total now reflects cumulative value up to now using pool totals (pending + sent).
+- Clarified UI labels to indicate historical pool source for wallet values.
+- Build verified successfully after historical value display update.

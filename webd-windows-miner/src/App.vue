@@ -8,6 +8,7 @@ import {
   getDesktopMeta,
   importDesktopWalletRaw,
   loadDesktopConfig,
+  selectDesktopWalletFileRaw,
   saveDesktopConfig,
 } from './services/desktopApi'
 import { fetchPoolAddressReward, fetchPoolStats } from './services/poolApi'
@@ -19,6 +20,10 @@ import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob,
 const WEBD_UNITS = 10_000
 const POOL_MIN_PAYOUT_WEBD = 20
 const BUILD_MARKER = 'BUILD MARKER 2026-04-03 / protocol-log / pool-host-fix / immediate-refresh'
+
+function isLegacyPoolUrl(poolUrl: string): boolean {
+  return poolUrl.trim().startsWith('pool/')
+}
 
 function unitsToWebd(units: number): number {
   return units / WEBD_UNITS
@@ -48,7 +53,6 @@ const saving = ref(false)
 const error = ref('')
 const success = ref('')
 const lastUpdated = ref('')
-const walletImportInput = ref('')
 const walletExportOutput = ref('')
 const walletPassword = ref('')
 const walletUnlockPassword = ref('')
@@ -94,39 +98,52 @@ const summaryCards = computed<Array<{ label: string; value: string }>>(() => {
 })
 
 const walletValueCards = computed(() => {
-  const pending = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
-  const confirmed = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
-  const total = pending + confirmed
+  const pendingSession = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
+  const confirmedSession = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
+
+  // Prefer cumulative pool values when available.
+  const pending = poolAddressReward.value?.rewardTotalWebd ?? pendingSession
+  const confirmed = poolAddressReward.value?.rewardConfirmedWebd ?? confirmedSession
+  const sent = poolAddressReward.value?.rewardSentWebd ?? 0
+  const totalWallet = poolAddressReward.value?.walletBalanceWebd ?? (pending + sent)
 
   const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
   return {
     pending: fmt(pending),
     confirmed: fmt(confirmed),
-    total: fmt(total),
+    total: fmt(totalWallet),
   }
 })
 
 const walletTotalsRaw = computed(() => {
-  const pending = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
-  const confirmed = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
+  const pendingSession = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
+  const confirmedSession = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
+  const pending = poolAddressReward.value?.rewardTotalWebd ?? pendingSession
+  const confirmed = poolAddressReward.value?.rewardConfirmedWebd ?? confirmedSession
+  const sent = poolAddressReward.value?.rewardSentWebd ?? 0
   return {
     pending,
     confirmed,
-    total: pending + confirmed,
+    total: pending + sent,
   }
 })
 
 const poolPayoutCards = computed(() => {
+  const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
+
   if (!poolAddressReward.value) {
+    const fallbackPending = walletTotalsRaw.value.pending
+    const fallbackConfirmed = walletTotalsRaw.value.confirmed
+    const fallbackSent = Math.max(0, walletTotalsRaw.value.total - fallbackPending)
+
     return {
-      pending: '-',
-      confirmed: '-',
-      sent: '-',
-      source: '-',
+      pending: fmt(fallbackPending),
+      confirmed: fmt(fallbackConfirmed),
+      sent: fmt(fallbackSent),
+      source: 'worker-session fallback',
     }
   }
 
-  const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
   return {
     pending: fmt(poolAddressReward.value.rewardTotalWebd),
     confirmed: fmt(poolAddressReward.value.rewardConfirmedWebd),
@@ -309,6 +326,11 @@ async function hydrate() {
 
     // Auto-connect to configured/default pool when wallet exists.
     if (config.walletAddress) {
+      if (isLegacyPoolUrl(config.poolUrl) && !currentWallet.value) {
+        pushLog('Legacy PoS auto-connect skipped: wallet deblocat/importat necesar inainte de auth.')
+        return
+      }
+
       pushLog(`Auto-connect to pool: ${resolvePoolApiBase(config.poolUrl)}`)
       await runWorkerAuth()
       if (authResult.value?.token) {
@@ -356,6 +378,18 @@ function applyWallet(wallet: GeneratedWallet, source: string) {
   pushLog(`Wallet loaded from ${source}: ${wallet.address}`)
 }
 
+function getWalletForAuth(): GeneratedWallet | undefined {
+  if (!currentWallet.value) return undefined
+
+  // Send a plain object through IPC (avoid Vue proxy clone failures).
+  return {
+    address: currentWallet.value.address,
+    secretHex: currentWallet.value.secretHex,
+    publicKeyHex: currentWallet.value.publicKeyHex,
+    unencodedAddressHex: currentWallet.value.unencodedAddressHex,
+  }
+}
+
 async function generateWallet() {
   error.value = ''
   success.value = ''
@@ -369,16 +403,22 @@ async function generateWallet() {
   }
 }
 
-async function importWallet() {
+async function importWalletFromFile() {
   error.value = ''
   success.value = ''
 
   try {
-    const wallet = await importDesktopWalletRaw(walletImportInput.value)
-    applyWallet(wallet, 'import')
-    success.value = 'Wallet importat cu succes.'
+    const walletRaw = await selectDesktopWalletFileRaw()
+    if (!walletRaw) {
+      success.value = 'Import wallet anulat.'
+      return
+    }
+
+    const wallet = await importDesktopWalletRaw(walletRaw)
+    applyWallet(wallet, '.webd file')
+    success.value = 'Wallet .webd importat cu succes.'
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Wallet import failed.'
+    error.value = err instanceof Error ? err.message : 'Wallet .webd import failed.'
   }
 }
 
@@ -483,7 +523,14 @@ async function runWorkerAuth() {
   success.value = ''
 
   try {
-    authResult.value = await authWorker(config.poolUrl, config.walletAddress, config.poolKey, authResult.value?.workerId ?? '')
+    const walletForAuth = getWalletForAuth()
+    authResult.value = await authWorker(
+      config.poolUrl,
+      config.walletAddress,
+      config.poolKey,
+      authResult.value?.workerId ?? '',
+      walletForAuth,
+    )
     success.value = `Worker auth reusit: ${authResult.value.workerId}`
     pushLog(`Worker authenticated against ${config.poolUrl}.`)
 
@@ -594,6 +641,16 @@ async function startMiningLoop() {
     error.value = 'Trebuie wallet address inainte de start mining.'
     return
   }
+  if (isLegacyPoolUrl(config.poolUrl) && !currentWallet.value) {
+    error.value = 'Pentru pool legacy PoS trebuie sa deblochezi sau sa importi wallet-ul inainte de Start mining.'
+    return
+  }
+
+  if (isLegacyPoolUrl(config.poolUrl)) {
+    // Always start with a fresh legacy auth bound to the currently unlocked wallet.
+    authResult.value = null
+    currentJob.value = null
+  }
 
   miningStopRequested = false
   miningRunning.value = true
@@ -621,10 +678,29 @@ async function startMiningLoop() {
         }
 
         if (currentJob.value.nonceEnd <= currentJob.value.nonceStart) {
-          // PoS jobs often expose no PoW nonce range, so hashrate stays at 0 by design.
-          miningStatus.value = `PoS job ${currentJob.value.height} (no PoW range)`
-          await sleep(1200)
+          miningStatus.value = `Submitting PoS work ${currentJob.value.height}`
+
+          const submit = await submitWorkerShare(
+            config.poolUrl,
+            authResult.value.token,
+            currentJob.value.jobId,
+            0,
+            '',
+            0,
+            0,
+          )
+
+          lastShareResult.value = submit
+          miningLastResult.value = submit.result
+
+          if (submit.result === 'accepted') miningAccepted.value += 1
+          else if (submit.result === 'stale') miningStale.value += 1
+          else miningRejected.value += 1
+
+          pushLog(`PoS work ${submit.result} pentru job ${currentJob.value.jobId}.`)
+          await loadWorkerStats()
           currentJob.value = null
+          await sleep(1200)
           continue
         }
 
@@ -847,14 +923,11 @@ onMounted(() => {
 
           <div class="hero-actions wallet-actions">
             <button class="primary-btn" @click="generateWallet">Generate wallet</button>
-            <button class="ghost-btn" @click="importWallet">Import raw</button>
+            <button class="ghost-btn" @click="importWalletFromFile">Import .webd file</button>
             <button class="ghost-btn" @click="exportWallet">Export .webd</button>
           </div>
 
-          <label class="field">
-            <span>Import source (.webd JSON / 64 hex / 138 hex / WIF)</span>
-            <textarea v-model="walletImportInput" class="field-input field-textarea" rows="7" placeholder='{"version":"0.1",...}' />
-          </label>
+          <p class="panel-meta wallet-import-hint">Importul se face direct din fisier `.webd` selectat local, fara paste de text brut.</p>
 
           <div class="wallet-summary-grid">
             <div>
@@ -1002,15 +1075,15 @@ onMounted(() => {
 
           <div class="diagnostics-grid encrypted-grid">
             <div>
-              <p class="metric-label">Wallet pending</p>
+              <p class="metric-label">Wallet pending (istoric pool)</p>
               <p class="metric-value small-value">{{ walletValueCards.pending }} WEBD</p>
             </div>
             <div>
-              <p class="metric-label">Wallet confirmed</p>
+              <p class="metric-label">Wallet confirmed (istoric pool)</p>
               <p class="metric-value small-value">{{ walletValueCards.confirmed }} WEBD</p>
             </div>
             <div>
-              <p class="metric-label">Wallet total</p>
+              <p class="metric-label">Wallet total portofel (balance pool)</p>
               <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
             </div>
           </div>

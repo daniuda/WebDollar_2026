@@ -73,6 +73,14 @@ export function importDesktopWalletRaw(raw: string): Promise<GeneratedWallet> {
   return api.importWalletRaw(raw)
 }
 
+export function selectDesktopWalletFileRaw(): Promise<string | null> {
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet file import requires Electron runtime.'))
+  }
+  return api.selectWalletFileRaw()
+}
+
 export function exportDesktopLegacyWallet(secretHex: string): Promise<string> {
   const api = getDesktopApi()
   if (!api) {

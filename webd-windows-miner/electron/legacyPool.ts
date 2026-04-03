@@ -1,4 +1,5 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import nacl from 'tweetnacl'
 
 // Use require() so tsup emits a bare require() and does NOT wrap this CJS-only
 // module with __toESM().  With `import socketIo from 'socket.io-client'`, tsup
@@ -9,6 +10,21 @@ const socketIo: (url: string, opts?: Record<string, unknown>) => any = require('
 
 // Pool uses a self-signed TLS cert; disable validation for the whole miner process.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+
+const BLOCKS_POW_LENGTH = 32
+const POS_PUBLIC_KEY_LENGTH = 32
+const POS_SIGNATURE_LENGTH = 64
+const POS_MINIMUM_AMOUNT_WEBD = 100
+const WEBD_UNITS = 10_000
+const POS_MINIMUM_AMOUNT_UNITS = POS_MINIMUM_AMOUNT_WEBD * WEBD_UNITS
+const MAX_TARGET_BUFFER = Buffer.alloc(BLOCKS_POW_LENGTH, 0xff)
+
+type LegacyWalletIdentity = {
+  address: string
+  secretHex: string
+  publicKeyHex: string
+  unencodedAddressHex: string
+}
 
 type LegacyJob = {
   jobId: string
@@ -48,7 +64,7 @@ function parsePoolAddress(poolAddress: string): ParsedPoolAddress | null {
 /**
  * Build the socket.io-client 2.x `query` OBJECT for the Node-WebDollar pool.
  * The pool server immediately disconnects sockets without msg=HelloNode and
- * nodeConsensusType=1 (NODE_CONSENSUS_SERVER).  Query is passed as an object
+ * nodeConsensusType=1 (NODE_CONSENSUS_SERVER). Query is passed as an object
  * to match how the official Node-WebDollar miner client sends it.
  */
 function buildQuery(): Record<string, string | number> {
@@ -57,8 +73,8 @@ function buildQuery(): Record<string, string | number> {
     msg: 'HelloNode',
     version: '1.3.24',
     uuid,
-    nodeType: 0,        // NODE_WEB_PEER  (browser-like client)
-    nodeConsensusType: 1, // NODE_CONSENSUS_SERVER (required when pool is active)
+    nodeType: 0,
+    nodeConsensusType: 1,
     domain: 'browser',
   }
 }
@@ -68,11 +84,11 @@ function bytesFromAny(v: any): Buffer {
   if (Buffer.isBuffer(v)) return v
   if (Array.isArray(v)) return Buffer.from(v)
   if (v?.type === 'Buffer' && Array.isArray(v.data)) return Buffer.from(v.data)
+  if (typeof v === 'string' && /^[0-9a-f]+$/i.test(v) && v.length % 2 === 0) return Buffer.from(v, 'hex')
   return Buffer.alloc(0)
 }
 
 function decodeWebdBase64(input: string): Buffer {
-  // WebDollar replaces O->#, l->@, /->$ in base64 representation.
   const normalized = input
     .replace(/#/g, 'O')
     .replace(/@/g, 'l')
@@ -83,7 +99,6 @@ function decodeWebdBase64(input: string): Buffer {
 function getUnencodedAddressHexFromWalletAddress(walletAddress: string): string {
   try {
     const raw = decodeWebdBase64(walletAddress.trim())
-    // AddressWIF bytes format: WEBD$ prefix(4) + version(1) + addr(20) + checksum(4) + suffix(1)
     if (raw.length < 30) return ''
 
     const prefix = raw.subarray(0, 4)
@@ -98,6 +113,27 @@ function getUnencodedAddressHexFromWalletAddress(walletAddress: string): string 
   } catch {
     return ''
   }
+}
+
+function serializeNumber4Bytes(value: number): Buffer {
+  const buffer = Buffer.alloc(4)
+  buffer.writeUInt32BE(value >>> 0, 0)
+  return buffer
+}
+
+function trimLeadingZeros(buffer: Buffer): Buffer {
+  let index = 0
+  while (index < buffer.length - 1 && buffer[index] === 0) index += 1
+  return buffer.subarray(index)
+}
+
+function toFixedBuffer(length: number, buffer: Buffer): Buffer {
+  if (buffer.length === length) return buffer
+  if (buffer.length > length) return buffer.subarray(buffer.length - length)
+
+  const out = Buffer.alloc(length)
+  buffer.copy(out, length - buffer.length)
+  return out
 }
 
 function parseLegacyWork(payload: any): LegacyJob | null {
@@ -124,15 +160,61 @@ function parseLegacyWork(payload: any): LegacyJob | null {
   }
 }
 
+function extractPosHeaderPrefix(workSerialization: Buffer): Buffer {
+  const offsetBase = BLOCKS_POW_LENGTH + POS_PUBLIC_KEY_LENGTH + POS_SIGNATURE_LENGTH
+  if (workSerialization.length <= offsetBase) {
+    throw new Error('Work serialization PoS invalida')
+  }
+
+  const minerAddressLength = workSerialization[offsetBase] ?? 0
+  const headerOffset = offsetBase + 1 + minerAddressLength
+  if (headerOffset >= workSerialization.length) {
+    throw new Error('Header prefix PoS lipseste din work.s')
+  }
+
+  return workSerialization.subarray(headerOffset)
+}
+
+function replaceTimestampInHeaderPrefix(headerPrefix: Buffer, timeStamp: number): Buffer {
+  if (headerPrefix.length < 38) {
+    throw new Error('Header prefix prea scurt pentru timestamp PoS')
+  }
+
+  const nextPrefix = Buffer.from(headerPrefix)
+  serializeNumber4Bytes(timeStamp).copy(nextPrefix, 34)
+  return nextPrefix
+}
+
+function computePosHash(height: number, difficultyTargetPrev: Buffer, hashPrev: Buffer, minerAddress: Buffer, timeStamp: number, balance: number): Buffer {
+  const payload = Buffer.concat([
+    trimLeadingZeros(serializeNumber4Bytes(height)),
+    trimLeadingZeros(difficultyTargetPrev),
+    trimLeadingZeros(hashPrev),
+    trimLeadingZeros(minerAddress),
+    trimLeadingZeros(serializeNumber4Bytes(timeStamp)),
+  ])
+
+  const rawHash = createHash('sha256').update(payload).digest()
+  const hashNumber = BigInt(`0x${rawHash.toString('hex')}`)
+  const adjusted = hashNumber / BigInt(balance)
+  let adjustedHex = adjusted.toString(16)
+  if (adjustedHex.length % 2 === 1) adjustedHex = `0${adjustedHex}`
+
+  return toFixedBuffer(BLOCKS_POW_LENGTH, Buffer.from(adjustedHex, 'hex'))
+}
+
 export class LegacyPoolBridge {
   private socket: any = null
   private parsed: ParsedPoolAddress | null = null
   private token = ''
   private workerId = ''
   private walletAddress = ''
+  private signerWallet: LegacyWalletIdentity | null = null
+  private miningAddressesHex: string[] = []
   private connected = false
   private lastError = ''
   private lastJob: LegacyJob | null = null
+  private lastWorkPayload: any = null
   private protocolEvents: string[] = []
   private sharesAccepted = 0
   private sharesRejected = 0
@@ -165,7 +247,70 @@ export class LegacyPoolBridge {
     }
   }
 
-  async connect(poolAddress: string, walletAddress: string): Promise<{ token: string; workerId: string; poolName: string; poolFee: number }> {
+  private cacheWork(payload: any, eventLabel: string) {
+    const parsedWork = parseLegacyWork(payload)
+    if (!parsedWork) return
+
+    this.lastJob = parsedWork
+    this.lastWorkPayload = payload?.work ?? payload
+    this.pushProtocolEvent(`${eventLabel} job=${parsedWork.jobId} h=${parsedWork.height}`)
+  }
+
+  private resolvePosBalance(posMinerAddressHex: string): number {
+    const balances = Array.isArray(this.lastWorkPayload?.b) ? this.lastWorkPayload.b : []
+    if (balances.length === 0) return 0
+
+    const targetIndex = this.miningAddressesHex.findIndex((addressHex) => addressHex === posMinerAddressHex.toLowerCase())
+    const rawBalance = targetIndex >= 0 ? balances[targetIndex] : balances[0]
+    const balance = Number(rawBalance)
+    return Number.isFinite(balance) && balance > 0 ? balance : 0
+  }
+
+  private buildPosMiningWork(currentJob: LegacyJob, hashes: number, timeDiff: number) {
+    if (!this.lastWorkPayload) {
+      throw new Error('Pool-ul nu a furnizat work PoS complet pentru submit')
+    }
+
+    if (!this.signerWallet?.secretHex || !this.signerWallet.unencodedAddressHex) {
+      throw new Error('Pentru PoS trebuie wallet-ul deblocat in aplicatie inainte de Start mining')
+    }
+
+    const workSerialization = bytesFromAny(this.lastWorkPayload.s)
+    const difficultyTarget = bytesFromAny(this.lastWorkPayload.t)
+    if (workSerialization.length === 0 || difficultyTarget.length !== BLOCKS_POW_LENGTH) {
+      throw new Error('Job PoS incomplet: lipseste serializarea blocului sau target-ul')
+    }
+
+    const posMinerAddress = Buffer.from(this.signerWallet.unencodedAddressHex, 'hex')
+    const balance = this.resolvePosBalance(this.signerWallet.unencodedAddressHex)
+    const medianTimestamp = Math.ceil(Number(this.lastWorkPayload.m ?? Math.floor(Date.now() / 1000)))
+    const headerPrefix = replaceTimestampInHeaderPrefix(extractPosHeaderPrefix(workSerialization), medianTimestamp)
+    const keyPair = nacl.sign.keyPair.fromSeed(Buffer.from(this.signerWallet.secretHex, 'hex'))
+    const posSignature = Buffer.from(nacl.sign.detached(headerPrefix, keyPair.secretKey))
+    const posMinerPublicKey = Buffer.from(keyPair.publicKey)
+    const hashPrev = headerPrefix.subarray(2, 34)
+    const hash = balance >= POS_MINIMUM_AMOUNT_UNITS
+      ? computePosHash(currentJob.height, difficultyTarget, hashPrev, posMinerAddress, medianTimestamp, balance)
+      : Buffer.from(MAX_TARGET_BUFFER)
+
+    return {
+      hash,
+      nonce: 0,
+      hashes,
+      id: Number(currentJob.jobId),
+      h: currentJob.height,
+      timeDiff,
+      result: hash.compare(difficultyTarget) <= 0,
+      pos: {
+        timestamp: medianTimestamp,
+        posSignature,
+        posMinerAddress,
+        posMinerPublicKey,
+      },
+    }
+  }
+
+  async connect(poolAddress: string, walletAddress: string, signerWallet?: LegacyWalletIdentity): Promise<{ token: string; workerId: string; poolName: string; poolFee: number }> {
     if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
       throw new Error('Adresa pool legacy lipseste sau este invalida')
     }
@@ -187,15 +332,22 @@ export class LegacyPoolBridge {
     this.disconnect()
     this.parsed = parsed
     this.walletAddress = walletAddress.trim()
+    this.signerWallet = signerWallet ?? null
+    this.miningAddressesHex = []
+    if (signerWallet?.unencodedAddressHex) {
+      this.miningAddressesHex = [signerWallet.unencodedAddressHex.toLowerCase()]
+    } else {
+      const unencodedAddressHex = getUnencodedAddressHexFromWalletAddress(this.walletAddress)
+      if (unencodedAddressHex) this.miningAddressesHex = [unencodedAddressHex.toLowerCase()]
+    }
     this.lastError = ''
     this.lastJob = null
+    this.lastWorkPayload = null
     this.protocolEvents = []
     this.rewardPending = 0
     this.rewardConfirmed = 0
     this.pushProtocolEvent(`connect ${poolUrl}`)
 
-    // Pass query as an OBJECT, exactly as the official Node-WebDollar miner client does.
-    // Polling (HTTP) is blocked/failing on this pool; use websocket only.
     let s: any
     try {
       s = socketIo(poolUrl, {
@@ -213,9 +365,6 @@ export class LegacyPoolBridge {
     }
     this.socket = s
 
-    // Pool server sends HelloNode after accepting the connection and registering
-    // our socket in its NodesList.  We send hello-pool only after that so the
-    // pool's hello-pool event handler is guaranteed to exist.
     let helloSent = false
     const doSendHello = () => {
       if (!helloSent) {
@@ -228,11 +377,9 @@ export class LegacyPoolBridge {
       this.connected = true
       this.workerId = s.id || `legacy-${Date.now()}`
       this.pushProtocolEvent(`socket connected ${this.workerId}`)
-      // Fallback: if HelloNode from server never arrives, send hello-pool after 1.5s
       setTimeout(doSendHello, 1500)
     })
 
-    // Primary trigger: server sends HelloNode once it has registered our socket
     s.on('HelloNode', () => {
       this.pushProtocolEvent('received HelloNode from pool')
       setTimeout(doSendHello, 150)
@@ -257,20 +404,12 @@ export class LegacyPoolBridge {
 
     s.on('mining-pool/new-work', (payload: any) => {
       this.updateRewardStats(payload)
-      const parsedWork = parseLegacyWork(payload)
-      if (parsedWork) {
-        this.lastJob = parsedWork
-        this.pushProtocolEvent(`received new-work job=${parsedWork.jobId} h=${parsedWork.height}`)
-      }
+      this.cacheWork(payload, 'received new-work')
     })
 
     s.on('mining-pool/get-work/answer', (payload: any) => {
       this.updateRewardStats(payload)
-      const parsedWork = parseLegacyWork(payload)
-      if (parsedWork) {
-        this.lastJob = parsedWork
-        this.pushProtocolEvent(`received get-work answer job=${parsedWork.jobId} h=${parsedWork.height}`)
-      }
+      this.cacheWork(payload, 'received get-work answer')
     })
 
     await new Promise<void>((resolve, reject) => {
@@ -287,8 +426,6 @@ export class LegacyPoolBridge {
         this.updateRewardStats(answer)
         this.pushProtocolEvent('received hello-pool answer result=true')
 
-        // Step 3 of the 3-way handshake: confirm we accepted the pool's answer.
-        // Without this, the pool never calls addConnectedMinerPool and won't send work.
         s.emit('mining-pool/hello-pool/answer/confirmation', { result: true })
         this.pushProtocolEvent('sent hello-pool confirmation')
 
@@ -316,21 +453,20 @@ export class LegacyPoolBridge {
     this.connected = false
     this.walletAddress = ''
     this.lastJob = null
+    this.lastWorkPayload = null
     this.rewardPending = 0
     this.rewardConfirmed = 0
   }
 
   private sendHello(walletAddress: string) {
     if (!this.socket || !this.parsed) return
-    const unencodedAddressHex = getUnencodedAddressHexFromWalletAddress(walletAddress)
 
-    this.pushProtocolEvent(`sent hello-pool addr=${walletAddress.slice(0, 18)}... pos=${unencodedAddressHex ? 'yes' : 'no'}`)
+    this.pushProtocolEvent(`sent hello-pool addr=${walletAddress.slice(0, 18)}... pos=${this.miningAddressesHex.length > 0 ? 'yes' : 'no'}`)
     this.socket.emit('mining-pool/hello-pool', {
       message: randomBytes(32),
       pool: Buffer.from(this.parsed.poolPublicKeyHex, 'hex'),
       minerAddress: walletAddress,
-      // For PoS pools, server-side work generation expects minerInstance.addresses.
-      addresses: unencodedAddressHex ? [unencodedAddressHex] : [],
+      addresses: [...this.miningAddressesHex],
     })
   }
 
@@ -379,20 +515,9 @@ export class LegacyPoolBridge {
       return { result: 'stale', message: 'Job legacy expirat sau schimbat' }
     }
 
-    const response = await new Promise<any>((resolve) => {
-      const timer = setTimeout(() => resolve({ result: false, message: 'Timeout work-done answer' }), 10_000)
-      const listener = (answer: any) => {
-        clearTimeout(timer)
-        this.socket?.off('mining-pool/work-done/answer', listener)
-        this.updateRewardStats(answer)
-        this.pushProtocolEvent(`received work-done answer result=${String(answer?.result)} msg=${String(answer?.message || '-')}`)
-        resolve(answer)
-      }
-
-      this.socket?.on('mining-pool/work-done/answer', listener)
-      this.pushProtocolEvent(`sent work-done job=${jobId} nonce=${nonce}`)
-      this.socket?.emit('mining-pool/work-done', {
-        work: {
+    const submitWork = currentJob.nonceEnd <= currentJob.nonceStart
+      ? this.buildPosMiningWork(currentJob, hashes, timeDiff)
+      : {
           hash: Buffer.from(hashHex, 'hex'),
           nonce,
           hashes,
@@ -400,8 +525,30 @@ export class LegacyPoolBridge {
           h: currentJob.height,
           timeDiff,
           result: false,
-        },
-      })
+        }
+
+    const response = await new Promise<any>((resolve) => {
+      const timer = setTimeout(() => resolve({ result: false, message: 'Timeout work-done answer' }), 10_000)
+      const listener = (answer: any) => {
+        clearTimeout(timer)
+        this.socket?.off('mining-pool/work-done/answer', listener)
+        this.updateRewardStats(answer)
+        if (answer?.newWork || answer?.work) {
+          this.cacheWork(answer.newWork ?? answer.work, 'received follow-up work')
+        }
+        this.pushProtocolEvent(`received work-done answer result=${String(answer?.result)} msg=${String(answer?.message || '-')}`)
+        resolve(answer)
+      }
+
+      this.socket?.on('mining-pool/work-done/answer', listener)
+
+      if ('pos' in submitWork) {
+        this.pushProtocolEvent(`sent work-done pos job=${jobId} ts=${submitWork.pos.timestamp} result=${submitWork.result}`)
+      } else {
+        this.pushProtocolEvent(`sent work-done pow job=${jobId} nonce=${nonce}`)
+      }
+
+      this.socket?.emit('mining-pool/work-done', { work: submitWork })
     })
 
     const msg = String(response?.message || '')

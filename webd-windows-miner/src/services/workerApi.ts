@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AuthResult, MiningJob, ShareResult, WorkerStats } from '../types/miner'
+import type { AuthResult, GeneratedWallet, MiningJob, ShareResult, WorkerStats } from '../types/miner'
 import { resolvePoolApiCandidates } from './poolAddress'
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -32,9 +32,9 @@ async function withBaseFallback<T>(baseUrl: string, call: (normalizedBase: strin
   throw new Error('Worker API request failed')
 }
 
-export async function authWorker(baseUrl: string, walletAddress: string, poolKey: string, existingWorkerId = ''): Promise<AuthResult> {
+export async function authWorker(baseUrl: string, walletAddress: string, poolKey: string, existingWorkerId = '', wallet?: GeneratedWallet): Promise<AuthResult> {
   if (isLegacyPool(baseUrl) && window.desktopApi?.legacyConnect) {
-    const legacy = await window.desktopApi.legacyConnect(baseUrl, walletAddress)
+    const legacy = await window.desktopApi.legacyConnect(baseUrl, walletAddress, wallet)
     return {
       token: legacy.token,
       workerId: legacy.workerId,
