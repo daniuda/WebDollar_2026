@@ -10,11 +10,17 @@ import {
   loadDesktopConfig,
   saveDesktopConfig,
 } from './services/desktopApi'
-import { fetchPoolStats } from './services/poolApi'
+import { fetchPoolAddressReward, fetchPoolStats } from './services/poolApi'
 import { mineRange } from './services/hashEngine'
 import { authWorker, fetchWorkerJob, fetchWorkerStats, submitWorkerShare } from './services/workerApi'
 import { getDefaultPoolAddress, resolvePoolApiBase } from './services/poolAddress'
-import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolStats, ShareResult, WorkerStats } from './types/miner'
+import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolAddressReward, PoolStats, ShareResult, WorkerStats } from './types/miner'
+
+const WEBD_UNITS = 10_000
+
+function unitsToWebd(units: number): number {
+  return units / WEBD_UNITS
+}
 
 const config = reactive<DesktopAppConfig>({
   poolUrl: getDefaultPoolAddress(),
@@ -33,6 +39,7 @@ const currentWallet = ref<GeneratedWallet | null>(null)
 const authResult = ref<AuthResult | null>(null)
 const currentJob = ref<MiningJob | null>(null)
 const workerStats = ref<WorkerStats | null>(null)
+const poolAddressReward = ref<PoolAddressReward | null>(null)
 const lastShareResult = ref<ShareResult | null>(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -84,8 +91,8 @@ const summaryCards = computed<Array<{ label: string; value: string }>>(() => {
 })
 
 const walletValueCards = computed(() => {
-  const pending = Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0)
-  const confirmed = Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0)
+  const pending = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
+  const confirmed = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
   const total = pending + confirmed
 
   const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
@@ -97,12 +104,31 @@ const walletValueCards = computed(() => {
 })
 
 const walletTotalsRaw = computed(() => {
-  const pending = Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0)
-  const confirmed = Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0)
+  const pending = unitsToWebd(Number(workerStats.value?.rewardPending ?? authResult.value?.reward ?? 0))
+  const confirmed = unitsToWebd(Number(workerStats.value?.rewardConfirmed ?? authResult.value?.confirmed ?? 0))
   return {
     pending,
     confirmed,
     total: pending + confirmed,
+  }
+})
+
+const poolPayoutCards = computed(() => {
+  if (!poolAddressReward.value) {
+    return {
+      pending: '-',
+      confirmed: '-',
+      sent: '-',
+      source: '-',
+    }
+  }
+
+  const fmt = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 6 })
+  return {
+    pending: fmt(poolAddressReward.value.rewardTotalWebd),
+    confirmed: fmt(poolAddressReward.value.rewardConfirmedWebd),
+    sent: fmt(poolAddressReward.value.rewardSentWebd),
+    source: poolAddressReward.value.source,
   }
 })
 
@@ -395,11 +421,25 @@ async function refreshPoolStats() {
   try {
     const nextStats = await fetchPoolStats(config.poolUrl)
     stats.value = nextStats
+    await refreshPoolAddressReward()
     lastUpdated.value = new Date().toLocaleString('ro-RO')
     pushLog(`Pool stats refreshed from ${config.poolUrl}.`)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Cannot fetch pool stats.'
     pushLog(`Pool refresh failed: ${error.value}`)
+  }
+}
+
+async function refreshPoolAddressReward() {
+  if (!config.walletAddress) {
+    poolAddressReward.value = null
+    return
+  }
+
+  try {
+    poolAddressReward.value = await fetchPoolAddressReward(config.poolUrl, config.walletAddress)
+  } catch {
+    // Keep this silent; some pool endpoints may not expose all-miners.
   }
 }
 
@@ -458,6 +498,7 @@ async function loadWorkerStats() {
 
   try {
     workerStats.value = await fetchWorkerStats(config.poolUrl, authResult.value.token)
+    await refreshPoolAddressReward()
     recordEarningsSnapshot()
     success.value = 'Worker stats actualizate.'
     if (!activityLog.value[0]?.includes(`Worker stats refreshed for ${workerStats.value.workerId}.`)) {
@@ -919,6 +960,25 @@ onMounted(() => {
               <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
             </div>
           </div>
+
+          <div class="diagnostics-grid encrypted-grid">
+            <div>
+              <p class="metric-label">Pool pending (reward_total)</p>
+              <p class="metric-value small-value">{{ poolPayoutCards.pending }} WEBD</p>
+            </div>
+            <div>
+              <p class="metric-label">Pool confirmed (reward_confirmed)</p>
+              <p class="metric-value small-value">{{ poolPayoutCards.confirmed }} WEBD</p>
+            </div>
+            <div>
+              <p class="metric-label">Pool sent (reward_sent)</p>
+              <p class="metric-value small-value">{{ poolPayoutCards.sent }} WEBD</p>
+            </div>
+          </div>
+          <p class="panel-meta">
+            reward_total = pending in pool, reward_confirmed = confirmat pentru payout, reward_sent = deja platit.
+          </p>
+          <p v-if="showTechDetails" class="panel-meta">Sursa payout: {{ poolPayoutCards.source }}</p>
 
           <label class="field">
             <span>Payout target (WEBD)</span>

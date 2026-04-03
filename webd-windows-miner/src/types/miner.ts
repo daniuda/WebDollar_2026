@@ -62,6 +62,17 @@ export interface PoolStats {
   keyRequired: boolean
 }
 
+export interface PoolAddressReward {
+  address: string
+  rewardTotalUnits: number
+  rewardConfirmedUnits: number
+  rewardSentUnits: number
+  rewardTotalWebd: number
+  rewardConfirmedWebd: number
+  rewardSentWebd: number
+  source: string
+}
+
 export interface AppMeta {
   version: string
   platform: string
