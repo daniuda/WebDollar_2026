@@ -162,3 +162,14 @@ Checkpoint 022
 - Wallet total now reflects cumulative value up to now using pool totals (pending + sent).
 - Clarified UI labels to indicate historical pool source for wallet values.
 - Build verified successfully after historical value display update.
+
+Checkpoint 023 (Conversation Summary + New Development Base)
+- Confirmed live pool miner match for address `WEBD/gD+dt3gD4/OLR37m6yozeN0emz+Pj+qK2H/` with exact values:
+	- `totalPOSBalance = 109934908` (units) => `10,993.4908 WEBD`
+	- `reward_total = 15324`, `reward_confirmed = 5696`, `reward_sent = 0`
+- Fixed pool address canonicalization mismatch in app by decoding legacy pool symbols before normalization:
+	- `# -> O`, `$ -> /`, `@ -> l`
+	- This aligns app matching with validated PowerShell canonicalization and unblocks correct miner lookup.
+- Wallet total display now uses `totalPOSBalance` as primary source when present, with correct WEBD unit conversion.
+- Project baseline decision recorded by user: this current stable state is the new base for continued development.
+- Saved as git commit `c1b8ba5` and tagged `v1-base` to replace previous "first version" reference.
