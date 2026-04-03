@@ -18,6 +18,7 @@ import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob,
 
 const WEBD_UNITS = 10_000
 const POOL_MIN_PAYOUT_WEBD = 20
+const BUILD_MARKER = 'BUILD MARKER 2026-04-03 / protocol-log / pool-host-fix / immediate-refresh'
 
 function unitsToWebd(units: number): number {
   return units / WEBD_UNITS
@@ -748,6 +749,12 @@ onMounted(() => {
       <p v-if="error" class="banner error-banner">{{ error }}</p>
       <p v-if="success" class="banner success-banner">{{ success }}</p>
       <p v-if="watchdogWarning" class="banner error-banner">{{ watchdogWarning }}</p>
+
+      <section class="build-marker-card">
+        <p class="build-marker-label">Marker versiune rulata</p>
+        <p class="build-marker-value">{{ BUILD_MARKER }}</p>
+        <p class="panel-meta">Daca vezi exact acest text, rulezi build-ul nou cu protocol log si fixul pentru pools/all-miners.</p>
+      </section>
 
       <section class="metrics-grid">
         <article v-for="card in summaryCards" :key="card.label" class="metric-card">

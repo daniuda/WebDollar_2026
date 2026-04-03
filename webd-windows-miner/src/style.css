@@ -191,6 +191,32 @@ button {
   border: 1px solid transparent;
 }
 
+.build-marker-card {
+  padding: 20px 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(247, 178, 103, 0.48);
+  background: linear-gradient(135deg, rgba(69, 41, 7, 0.78), rgba(122, 64, 9, 0.42));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+.build-marker-label {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffd7a6;
+}
+
+.build-marker-value {
+  margin: 8px 0 0;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff4df;
+  word-break: break-word;
+}
+
 .error-banner {
   background: rgba(111, 27, 38, 0.34);
   border-color: rgba(245, 98, 121, 0.4);
