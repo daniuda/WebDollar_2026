@@ -51,6 +51,7 @@ const miningRejected = ref(0)
 const miningStale = ref(0)
 const miningLastResult = ref('-')
 const hashCounter = ref(0)
+const showTechDetails = ref(false)
 const lastLoggedJobKey = ref('')
 const watchdogWarning = ref('')
 const lastJobReceivedAt = ref(0)
@@ -639,7 +640,6 @@ onMounted(() => {
         <ul class="status-list">
           <li>Electron shell</li>
           <li>Config persistence</li>
-          <li>Pool stats connectivity</li>
         </ul>
       </div>
     </aside>
@@ -656,6 +656,7 @@ onMounted(() => {
 
         <div class="hero-actions">
           <button class="ghost-btn" :disabled="saving" @click="toggleSimpleMode">{{ config.simpleMode ? 'Advanced mode' : 'Miner only mode' }}</button>
+          <button class="ghost-btn" @click="showTechDetails = !showTechDetails">{{ showTechDetails ? 'Ascunde detalii' : 'Detalii tehnice' }}</button>
           <button class="ghost-btn" :disabled="loading" @click="refreshPoolStats">Refresh pool</button>
           <button class="primary-btn" :disabled="saving" @click="persistConfig">{{ saving ? 'Saving...' : 'Save config' }}</button>
         </div>
@@ -841,53 +842,58 @@ onMounted(() => {
               <p class="metric-label">Hashrate</p>
               <p class="metric-value small-value">{{ miningHashrate }} H/s</p>
             </div>
-            <div>
-              <p class="metric-label">Last result</p>
-              <p class="metric-value small-value">{{ miningLastResult }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Accepted</p>
-              <p class="metric-value small-value">{{ miningAccepted }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Rejected</p>
-              <p class="metric-value small-value">{{ miningRejected }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Stale</p>
-              <p class="metric-value small-value">{{ miningStale }}</p>
-            </div>
           </div>
 
-          <div class="wallet-summary-grid">
-            <div>
-              <p class="metric-label">Token</p>
-              <p class="metric-value small-value">{{ authResult?.token || '-' }}</p>
+          <template v-if="showTechDetails">
+            <div class="wallet-summary-grid">
+              <div>
+                <p class="metric-label">Last result</p>
+                <p class="metric-value small-value">{{ miningLastResult }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Accepted</p>
+                <p class="metric-value small-value">{{ miningAccepted }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Rejected</p>
+                <p class="metric-value small-value">{{ miningRejected }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Stale</p>
+                <p class="metric-value small-value">{{ miningStale }}</p>
+              </div>
             </div>
-            <div>
-              <p class="metric-label">Worker ID</p>
-              <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Pool name</p>
-              <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
-            </div>
-          </div>
 
-          <div class="wallet-summary-grid">
-            <div>
-              <p class="metric-label">Current job</p>
-              <p class="metric-value small-value">{{ currentJob?.jobId || '-' }}</p>
+            <div class="wallet-summary-grid">
+              <div>
+                <p class="metric-label">Token</p>
+                <p class="metric-value small-value">{{ authResult?.token || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Worker ID</p>
+                <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Pool name</p>
+                <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
+              </div>
             </div>
-            <div>
-              <p class="metric-label">Height</p>
-              <p class="metric-value small-value">{{ currentJob?.height ?? '-' }}</p>
+
+            <div class="wallet-summary-grid">
+              <div>
+                <p class="metric-label">Current job</p>
+                <p class="metric-value small-value">{{ currentJob?.jobId || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Height</p>
+                <p class="metric-value small-value">{{ currentJob?.height ?? '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Nonce range</p>
+                <p class="metric-value small-value">{{ currentJob ? `${currentJob.nonceStart} - ${currentJob.nonceEnd}` : '-' }}</p>
+              </div>
             </div>
-            <div>
-              <p class="metric-label">Nonce range</p>
-              <p class="metric-value small-value">{{ currentJob ? `${currentJob.nonceStart} - ${currentJob.nonceEnd}` : '-' }}</p>
-            </div>
-          </div>
+          </template>
         </article>
 
         <article class="panel diagnostics-panel">
@@ -939,32 +945,34 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="diagnostics-grid encrypted-grid">
-            <div>
-              <p class="metric-label">Last submit result</p>
-              <p class="metric-value small-value">{{ lastShareResult?.result || '-' }}</p>
+          <template v-if="showTechDetails">
+            <div class="diagnostics-grid encrypted-grid">
+              <div>
+                <p class="metric-label">Last submit result</p>
+                <p class="metric-value small-value">{{ lastShareResult?.result || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Last submit message</p>
+                <p class="metric-value small-value">{{ lastShareResult?.message || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Worker ID</p>
+                <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Pool name</p>
+                <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Worker accepted</p>
+                <p class="metric-value small-value">{{ workerStats?.sharesAccepted ?? '-' }}</p>
+              </div>
+              <div>
+                <p class="metric-label">Worker rejected/stale</p>
+                <p class="metric-value small-value">{{ workerStats ? `${workerStats.sharesRejected} / ${workerStats.sharesStale}` : '-' }}</p>
+              </div>
             </div>
-            <div>
-              <p class="metric-label">Last submit message</p>
-              <p class="metric-value small-value">{{ lastShareResult?.message || '-' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Worker ID</p>
-              <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Pool name</p>
-              <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Worker accepted</p>
-              <p class="metric-value small-value">{{ workerStats?.sharesAccepted ?? '-' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Worker rejected/stale</p>
-              <p class="metric-value small-value">{{ workerStats ? `${workerStats.sharesRejected} / ${workerStats.sharesStale}` : '-' }}</p>
-            </div>
-          </div>
+          </template>
         </article>
       </section>
     </main>

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } from 'electron'
-import type { IpcMainInvokeEvent } from 'electron'
+import type { IpcMainInvokeEvent, NativeImage } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, importWalletRaw } from './wallet.js'
@@ -101,21 +101,35 @@ function createWindow() {
   mainWindow = win
 }
 
+function createTrayIcon(): NativeImage {
+  // Try a bundled icon first; fall back to a generated 16x16 orange square.
+  try {
+    const iconPath = join(app.getAppPath(), 'build', 'tray.png')
+    const img = nativeImage.createFromPath(iconPath)
+    if (!img.isEmpty()) return img
+  } catch {
+    // ignore missing file
+  }
+
+  // Generate a 16×16 solid orange icon (BGRA: R=255 G=140 B=0 A=255 => B=0 G=140 R=255 A=255).
+  const size = 16
+  const buf = Buffer.alloc(size * size * 4)
+  for (let i = 0; i < size * size; i++) {
+    buf[i * 4 + 0] = 0x00 // B
+    buf[i * 4 + 1] = 0x8c // G
+    buf[i * 4 + 2] = 0xff // R
+    buf[i * 4 + 3] = 0xff // A
+  }
+  return nativeImage.createFromBitmap(buf, { width: size, height: size })
+}
+
 function createTray() {
   if (tray) return
 
   try {
-    const iconPath = join(app.getAppPath(), 'build', 'tray.png')
-    const image = nativeImage.createFromPath(iconPath)
-
-    if (image.isEmpty()) {
-      // Don't crash if tray icon is missing in dev.
-      return
-    }
-
-    tray = new Tray(image)
+    tray = new Tray(createTrayIcon())
   } catch {
-    // Don't crash if tray creation fails in dev environments.
+    // Tray not supported on this system; skip silently.
     return
   }
 
