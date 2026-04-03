@@ -121,6 +121,7 @@ export async function fetchWorkerStats(baseUrl: string, token: string): Promise<
       sharesStale: legacy?.sharesStale ?? 0,
       rewardPending: legacy?.rewardPending ?? 0,
       rewardConfirmed: legacy?.rewardConfirmed ?? 0,
+      protocolEvents: Array.isArray(legacy?.protocolEvents) ? legacy.protocolEvents : [],
     }
   }
 
@@ -139,5 +140,6 @@ export async function fetchWorkerStats(baseUrl: string, token: string): Promise<
     sharesStale: response.data?.sharesStale ?? 0,
     rewardPending: response.data?.rewardPending ?? 0,
     rewardConfirmed: response.data?.rewardConfirmed ?? 0,
+    protocolEvents: Array.isArray(response.data?.protocolEvents) ? response.data.protocolEvents : [],
   }
 }

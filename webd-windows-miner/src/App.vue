@@ -61,6 +61,7 @@ const miningLastResult = ref('-')
 const hashCounter = ref(0)
 const showTechDetails = ref(false)
 const lastLoggedJobKey = ref('')
+const lastLoggedProtocolEntry = ref('')
 const watchdogWarning = ref('')
 const lastJobReceivedAt = ref(0)
 const earningsHistory = ref<Array<{ ts: number; total: number }>>([])
@@ -529,6 +530,11 @@ async function loadWorkerStats() {
     await refreshPoolAddressReward()
     recordEarningsSnapshot()
     success.value = 'Worker stats actualizate.'
+    const latestProtocolEntry = workerStats.value.protocolEvents[0]
+    if (latestProtocolEntry && latestProtocolEntry !== lastLoggedProtocolEntry.value) {
+      pushLog(`Protocol: ${latestProtocolEntry}`)
+      lastLoggedProtocolEntry.value = latestProtocolEntry
+    }
     if (!activityLog.value[0]?.includes(`Worker stats refreshed for ${workerStats.value.workerId}.`)) {
       pushLog(`Worker stats refreshed for ${workerStats.value.workerId}.`)
     }
@@ -1073,6 +1079,13 @@ onMounted(() => {
                 <p class="metric-label">Worker rejected/stale</p>
                 <p class="metric-value small-value">{{ workerStats ? `${workerStats.sharesRejected} / ${workerStats.sharesStale}` : '-' }}</p>
               </div>
+            </div>
+
+            <div class="timeline">
+              <p class="metric-label">Protocol log</p>
+              <ul class="timeline-list">
+                <li v-for="(entry, index) in (workerStats?.protocolEvents || [])" :key="`${index}-${entry}`">{{ entry }}</li>
+              </ul>
             </div>
           </template>
         </article>

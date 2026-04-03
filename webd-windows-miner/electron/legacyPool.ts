@@ -133,11 +133,19 @@ export class LegacyPoolBridge {
   private connected = false
   private lastError = ''
   private lastJob: LegacyJob | null = null
+  private protocolEvents: string[] = []
   private sharesAccepted = 0
   private sharesRejected = 0
   private sharesStale = 0
   private rewardPending = 0
   private rewardConfirmed = 0
+
+  private pushProtocolEvent(message: string) {
+    const stamp = new Date().toLocaleTimeString('ro-RO')
+    const entry = `${stamp} ${message}`
+    if (this.protocolEvents[0] === entry) return
+    this.protocolEvents = [entry, ...this.protocolEvents].slice(0, 20)
+  }
 
   private updateRewardStats(payload: any) {
     if (!payload || typeof payload !== 'object') return
@@ -181,8 +189,10 @@ export class LegacyPoolBridge {
     this.walletAddress = walletAddress.trim()
     this.lastError = ''
     this.lastJob = null
+    this.protocolEvents = []
     this.rewardPending = 0
     this.rewardConfirmed = 0
+    this.pushProtocolEvent(`connect ${poolUrl}`)
 
     // Pass query as an OBJECT, exactly as the official Node-WebDollar miner client does.
     // Polling (HTTP) is blocked/failing on this pool; use websocket only.
@@ -217,17 +227,20 @@ export class LegacyPoolBridge {
     s.on('connect', () => {
       this.connected = true
       this.workerId = s.id || `legacy-${Date.now()}`
+      this.pushProtocolEvent(`socket connected ${this.workerId}`)
       // Fallback: if HelloNode from server never arrives, send hello-pool after 1.5s
       setTimeout(doSendHello, 1500)
     })
 
     // Primary trigger: server sends HelloNode once it has registered our socket
     s.on('HelloNode', () => {
+      this.pushProtocolEvent('received HelloNode from pool')
       setTimeout(doSendHello, 150)
     })
 
     s.on('disconnect', () => {
       this.connected = false
+      this.pushProtocolEvent('socket disconnected')
     })
 
     s.on('connect_error', (err: any) => {
@@ -239,18 +252,25 @@ export class LegacyPoolBridge {
       ].filter(Boolean).join(' | ') || String(err ?? 'unknown')
       this.lastError = `Eroare conectare: ${reason}`
       this.connected = false
+      this.pushProtocolEvent(`connect_error ${reason}`)
     })
 
     s.on('mining-pool/new-work', (payload: any) => {
       this.updateRewardStats(payload)
       const parsedWork = parseLegacyWork(payload)
-      if (parsedWork) this.lastJob = parsedWork
+      if (parsedWork) {
+        this.lastJob = parsedWork
+        this.pushProtocolEvent(`received new-work job=${parsedWork.jobId} h=${parsedWork.height}`)
+      }
     })
 
     s.on('mining-pool/get-work/answer', (payload: any) => {
       this.updateRewardStats(payload)
       const parsedWork = parseLegacyWork(payload)
-      if (parsedWork) this.lastJob = parsedWork
+      if (parsedWork) {
+        this.lastJob = parsedWork
+        this.pushProtocolEvent(`received get-work answer job=${parsedWork.jobId} h=${parsedWork.height}`)
+      }
     })
 
     await new Promise<void>((resolve, reject) => {
@@ -259,15 +279,18 @@ export class LegacyPoolBridge {
       s.once('mining-pool/hello-pool/answer', (answer: any) => {
         clearTimeout(timer)
         if (!answer?.result) {
+          this.pushProtocolEvent(`hello-pool rejected ${String(answer?.message || 'unknown')}`)
           reject(new Error(answer?.message || 'Pool refuzat'))
           return
         }
 
         this.updateRewardStats(answer)
+        this.pushProtocolEvent('received hello-pool answer result=true')
 
         // Step 3 of the 3-way handshake: confirm we accepted the pool's answer.
         // Without this, the pool never calls addConnectedMinerPool and won't send work.
         s.emit('mining-pool/hello-pool/answer/confirmation', { result: true })
+        this.pushProtocolEvent('sent hello-pool confirmation')
 
         this.connected = true
         this.token = `legacy-${Date.now()}`
@@ -301,6 +324,7 @@ export class LegacyPoolBridge {
     if (!this.socket || !this.parsed) return
     const unencodedAddressHex = getUnencodedAddressHexFromWalletAddress(walletAddress)
 
+    this.pushProtocolEvent(`sent hello-pool addr=${walletAddress.slice(0, 18)}... pos=${unencodedAddressHex ? 'yes' : 'no'}`)
     this.socket.emit('mining-pool/hello-pool', {
       message: randomBytes(32),
       pool: Buffer.from(this.parsed.poolPublicKeyHex, 'hex'),
@@ -311,6 +335,7 @@ export class LegacyPoolBridge {
   }
 
   private requestWork() {
+    this.pushProtocolEvent('sent get-work')
     this.socket?.emit('mining-pool/get-work', {})
   }
 
@@ -360,10 +385,12 @@ export class LegacyPoolBridge {
         clearTimeout(timer)
         this.socket?.off('mining-pool/work-done/answer', listener)
         this.updateRewardStats(answer)
+        this.pushProtocolEvent(`received work-done answer result=${String(answer?.result)} msg=${String(answer?.message || '-')}`)
         resolve(answer)
       }
 
       this.socket?.on('mining-pool/work-done/answer', listener)
+      this.pushProtocolEvent(`sent work-done job=${jobId} nonce=${nonce}`)
       this.socket?.emit('mining-pool/work-done', {
         hash: Buffer.from(hashHex, 'hex'),
         nonce,
@@ -405,6 +432,7 @@ export class LegacyPoolBridge {
       sharesStale: this.sharesStale,
       rewardPending: this.rewardPending,
       rewardConfirmed: this.rewardConfirmed,
+      protocolEvents: [...this.protocolEvents],
     }
   }
 

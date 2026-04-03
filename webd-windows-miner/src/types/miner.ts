@@ -51,6 +51,7 @@ export interface WorkerStats {
   sharesStale: number
   rewardPending: number
   rewardConfirmed: number
+  protocolEvents: string[]
 }
 
 export interface PoolStats {
