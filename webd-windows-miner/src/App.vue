@@ -485,6 +485,10 @@ async function runWorkerAuth() {
     authResult.value = await authWorker(config.poolUrl, config.walletAddress, config.poolKey, authResult.value?.workerId ?? '')
     success.value = `Worker auth reusit: ${authResult.value.workerId}`
     pushLog(`Worker authenticated against ${config.poolUrl}.`)
+
+    if (authResult.value?.token) {
+      await loadWorkerStats()
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Worker auth failed.'
     pushLog(`Worker auth failed: ${error.value}`)
@@ -509,6 +513,10 @@ async function loadWorkerJob() {
     if (lastLoggedJobKey.value !== nextJobKey) {
       pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
       lastLoggedJobKey.value = nextJobKey
+    }
+
+    if (!workerStats.value) {
+      await loadWorkerStats()
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Fetch job failed.'
@@ -1086,6 +1094,7 @@ onMounted(() => {
               <ul class="timeline-list">
                 <li v-for="(entry, index) in (workerStats?.protocolEvents || [])" :key="`${index}-${entry}`">{{ entry }}</li>
               </ul>
+              <p v-if="!(workerStats?.protocolEvents?.length)" class="panel-meta">Astept primul refresh de protocol...</p>
             </div>
           </template>
         </article>
