@@ -369,7 +369,7 @@ export class LegacyPoolBridge {
     return this.lastJob as LegacyJob
   }
 
-  async submitShare(token: string, jobId: string, nonce: number, hashHex: string): Promise<ShareResult> {
+  async submitShare(token: string, jobId: string, nonce: number, hashHex: string, hashes = 1, timeDiff = 0): Promise<ShareResult> {
     if (!this.connected || token !== this.token) {
       throw new Error('Worker legacy neautentificat')
     }
@@ -392,13 +392,15 @@ export class LegacyPoolBridge {
       this.socket?.on('mining-pool/work-done/answer', listener)
       this.pushProtocolEvent(`sent work-done job=${jobId} nonce=${nonce}`)
       this.socket?.emit('mining-pool/work-done', {
-        hash: Buffer.from(hashHex, 'hex'),
-        nonce,
-        hashes: 1,
-        id: Number(jobId),
-        h: currentJob.height,
-        timeDiff: 0,
-        result: false,
+        work: {
+          hash: Buffer.from(hashHex, 'hex'),
+          nonce,
+          hashes,
+          id: Number(jobId),
+          h: currentJob.height,
+          timeDiff,
+          result: false,
+        },
       })
     })
 

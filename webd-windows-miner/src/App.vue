@@ -638,6 +638,9 @@ async function startMiningLoop() {
         if (miningStopRequested) break
 
         if (!found) {
+          if (currentJob.value) {
+            pushLog(`No valid share found for job ${currentJob.value.jobId} in nonce range ${currentJob.value.nonceStart}-${currentJob.value.nonceEnd}.`)
+          }
           currentJob.value = null
           continue
         }
@@ -648,6 +651,8 @@ async function startMiningLoop() {
           currentJob.value.jobId,
           found.nonce,
           found.hashHex,
+          found.hashesTried,
+          found.timeDiffMs,
         )
 
         lastShareResult.value = submit

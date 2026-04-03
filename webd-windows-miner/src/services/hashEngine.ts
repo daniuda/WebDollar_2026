@@ -1,60 +1,83 @@
-import { sha256 } from '@noble/hashes/sha2.js'
-import type { MiningJob } from '../types/miner'
+import { argon2d } from '@noble/hashes/argon2.js'
+import type { MiningJob, MiningResult } from '../types/miner'
+
+const ARGON2_SALT = 'Satoshi_is_Finney'
+const ARGON2_OPTS = {
+  t: 2,
+  m: 256,
+  p: 2,
+  dkLen: 32,
+} as const
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-function concatBytes(...chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((sum, c) => sum + c.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.length
+function fromHex(hex: string): Uint8Array {
+  const normalized = hex.trim()
+  if (!normalized || normalized.length % 2 !== 0) {
+    return new Uint8Array()
+  }
+
+  const out = new Uint8Array(normalized.length / 2)
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = Number.parseInt(normalized.slice(i * 2, i * 2 + 2), 16)
   }
   return out
 }
 
-function longToBytes(value: number): Uint8Array {
-  let v = BigInt(value)
-  const out = new Uint8Array(8)
-  for (let i = 7; i >= 0; i -= 1) {
-    out[i] = Number(v & 0xffn)
-    v >>= 8n
+function compareBytes(left: Uint8Array, right: Uint8Array): number {
+  const size = Math.min(left.length, right.length)
+  for (let index = 0; index < size; index += 1) {
+    if (left[index] < right[index]) return -1
+    if (left[index] > right[index]) return 1
   }
-  return out
+
+  if (left.length < right.length) return -1
+  if (left.length > right.length) return 1
+  return 0
 }
 
-function targetLeadingZeros(target: string): number {
-  const zeros = (target.match(/^(0+)/)?.[1]?.length ?? 0)
-  return Math.max(1, Math.floor(zeros / 2))
-}
-
-function meetsTarget(hashHex: string, requiredZeros: number): boolean {
-  return hashHex.slice(0, requiredZeros).split('').every((ch) => ch === '0')
+function writeNonce4(buffer: Uint8Array, offset: number, nonce: number) {
+  buffer[offset] = nonce >>> 24 & 0xff
+  buffer[offset + 1] = nonce >>> 16 & 0xff
+  buffer[offset + 2] = nonce >>> 8 & 0xff
+  buffer[offset + 3] = nonce & 0xff
 }
 
 export async function mineRange(
   job: MiningJob,
   onHash: () => void,
   shouldStop: () => boolean,
-): Promise<{ nonce: number; hashHex: string } | null> {
-  const header = new TextEncoder().encode(job.blockHeader)
-  const requiredZeros = targetLeadingZeros(job.target)
+): Promise<MiningResult | null> {
+  const header = fromHex(job.blockHeader)
+  const target = fromHex(job.target)
+  if (header.length === 0 || target.length === 0) {
+    return null
+  }
+
+  const pass = new Uint8Array(header.length + 4)
+  pass.set(header, 0)
+  const nonceOffset = header.length
+  const startedAt = Date.now()
+  let hashesTried = 0
 
   for (let nonce = job.nonceStart; nonce < job.nonceEnd; nonce += 1) {
     if (shouldStop()) return null
     if (Date.now() > job.expireAt) return null
 
-    const input = concatBytes(header, longToBytes(nonce))
-    const hash1 = sha256(input)
-    const hash2 = sha256(hash1)
-    const hashHex = toHex(hash2)
+    writeNonce4(pass, nonceOffset, nonce)
+    const hash = argon2d(pass, ARGON2_SALT, ARGON2_OPTS)
+    hashesTried += 1
     onHash()
 
-    if (meetsTarget(hashHex, requiredZeros)) {
-      return { nonce, hashHex }
+    if (compareBytes(hash, target) <= 0) {
+      return {
+        nonce,
+        hashHex: toHex(hash),
+        hashesTried,
+        timeDiffMs: Date.now() - startedAt,
+      }
     }
 
     if (nonce % 2048 === 0) {

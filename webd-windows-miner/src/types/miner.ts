@@ -36,6 +36,13 @@ export interface MiningJob {
   expireAt: number
 }
 
+export interface MiningResult {
+  nonce: number
+  hashHex: string
+  hashesTried: number
+  timeDiffMs: number
+}
+
 export interface ShareResult {
   result: string
   message: string

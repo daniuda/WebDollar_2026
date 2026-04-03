@@ -185,8 +185,8 @@ app.whenReady().then(() => {
     return legacyPool.connect(poolAddress, walletAddress)
   })
   ipcMain.handle('legacy:get-job', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getJob(token))
-  ipcMain.handle('legacy:submit-share', async (_event: IpcMainInvokeEvent, token: string, jobId: string, nonce: number, hashHex: string) => {
-    return legacyPool.submitShare(token, jobId, nonce, hashHex)
+  ipcMain.handle('legacy:submit-share', async (_event: IpcMainInvokeEvent, token: string, jobId: string, nonce: number, hashHex: string, hashes = 1, timeDiff = 0) => {
+    return legacyPool.submitShare(token, jobId, nonce, hashHex, hashes, timeDiff)
   })
   ipcMain.handle('legacy:get-worker-stats', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getWorkerStats(token))
   ipcMain.handle('legacy:get-pool-stats', async () => legacyPool.getPoolStats())

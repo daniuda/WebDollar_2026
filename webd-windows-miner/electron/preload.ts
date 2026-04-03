@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   decryptSecret: (envelopeJson: string, passphrase: string) => ipcRenderer.invoke('wallet:decrypt-secret', envelopeJson, passphrase) as Promise<string>,
   legacyConnect: (poolAddress: string, walletAddress: string) => ipcRenderer.invoke('legacy:connect', poolAddress, walletAddress) as Promise<LegacyAuthResult>,
   legacyGetJob: (token: string) => ipcRenderer.invoke('legacy:get-job', token) as Promise<LegacyJob>,
-  legacySubmitShare: (token: string, jobId: string, nonce: number, hashHex: string) => ipcRenderer.invoke('legacy:submit-share', token, jobId, nonce, hashHex) as Promise<LegacyShareResult>,
+  legacySubmitShare: (token: string, jobId: string, nonce: number, hashHex: string, hashes = 1, timeDiff = 0) => ipcRenderer.invoke('legacy:submit-share', token, jobId, nonce, hashHex, hashes, timeDiff) as Promise<LegacyShareResult>,
   legacyGetWorkerStats: (token: string) => ipcRenderer.invoke('legacy:get-worker-stats', token),
   legacyGetPoolStats: () => ipcRenderer.invoke('legacy:get-pool-stats'),
 })

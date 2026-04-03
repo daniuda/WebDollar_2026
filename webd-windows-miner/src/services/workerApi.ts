@@ -88,9 +88,9 @@ export async function fetchWorkerJob(baseUrl: string, token: string): Promise<Mi
   }
 }
 
-export async function submitWorkerShare(baseUrl: string, token: string, jobId: string, nonce: number, hash: string): Promise<ShareResult> {
+export async function submitWorkerShare(baseUrl: string, token: string, jobId: string, nonce: number, hash: string, hashes = 1, timeDiff = 0): Promise<ShareResult> {
   if (isLegacyPool(baseUrl) && window.desktopApi?.legacySubmitShare) {
-    return window.desktopApi.legacySubmitShare(token, jobId, nonce, hash)
+    return window.desktopApi.legacySubmitShare(token, jobId, nonce, hash, hashes, timeDiff)
   }
 
   const response = await withBaseFallback(baseUrl, (normalizedBase) => axios.post(`${normalizedBase}/worker/share`, {
@@ -98,6 +98,8 @@ export async function submitWorkerShare(baseUrl: string, token: string, jobId: s
     jobId,
     nonce,
     hash,
+    hashes,
+    timeDiff,
   }, {
     timeout: 10_000,
   }))
