@@ -17,6 +17,7 @@ import { getDefaultPoolAddress, resolvePoolApiBase } from './services/poolAddres
 import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolAddressReward, PoolStats, ShareResult, WorkerStats } from './types/miner'
 
 const WEBD_UNITS = 10_000
+const POOL_MIN_PAYOUT_WEBD = 20
 
 function unitsToWebd(units: number): number {
   return units / WEBD_UNITS
@@ -129,6 +130,33 @@ const poolPayoutCards = computed(() => {
     confirmed: fmt(poolAddressReward.value.rewardConfirmedWebd),
     sent: fmt(poolAddressReward.value.rewardSentWebd),
     source: poolAddressReward.value.source,
+  }
+})
+
+const payoutThresholdInfo = computed(() => {
+  if (!poolAddressReward.value) {
+    return {
+      thresholdWebd: POOL_MIN_PAYOUT_WEBD,
+      confirmedWebd: 0,
+      remainingWebd: POOL_MIN_PAYOUT_WEBD,
+      progressPercent: 0,
+      statusLabel: 'Astept date payout din pool...',
+    }
+  }
+
+  const confirmedWebd = poolAddressReward.value.rewardConfirmedWebd
+  const remainingWebd = Math.max(0, POOL_MIN_PAYOUT_WEBD - confirmedWebd)
+  const progressPercent = Math.max(0, Math.min(100, (confirmedWebd / POOL_MIN_PAYOUT_WEBD) * 100))
+  const statusLabel = remainingWebd <= 0
+    ? 'Prag payout atins.'
+    : `Mai sunt ~${remainingWebd.toLocaleString('en-US', { maximumFractionDigits: 6 })} WEBD pana la prag.`
+
+  return {
+    thresholdWebd: POOL_MIN_PAYOUT_WEBD,
+    confirmedWebd,
+    remainingWebd,
+    progressPercent,
+    statusLabel,
   }
 })
 
@@ -978,6 +1006,20 @@ onMounted(() => {
           <p class="panel-meta">
             reward_total = pending in pool, reward_confirmed = confirmat pentru payout, reward_sent = deja platit.
           </p>
+          <div class="diagnostics-grid encrypted-grid">
+            <div>
+              <p class="metric-label">Prag payout pool</p>
+              <p class="metric-value small-value">{{ payoutThresholdInfo.thresholdWebd.toLocaleString('en-US', { maximumFractionDigits: 3 }) }} WEBD</p>
+            </div>
+            <div>
+              <p class="metric-label">Progres payout</p>
+              <p class="metric-value small-value">{{ payoutThresholdInfo.progressPercent.toFixed(1) }}%</p>
+            </div>
+            <div>
+              <p class="metric-label">Status payout</p>
+              <p class="metric-value small-value">{{ payoutThresholdInfo.statusLabel }}</p>
+            </div>
+          </div>
           <p v-if="showTechDetails" class="panel-meta">Sursa payout: {{ poolPayoutCards.source }}</p>
 
           <label class="field">
