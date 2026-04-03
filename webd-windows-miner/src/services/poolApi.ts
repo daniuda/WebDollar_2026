@@ -55,8 +55,7 @@ export async function fetchPoolAddressReward(baseUrl: string, walletAddress: str
   if (!address) return null
 
   const primary = resolvePoolApiBase(baseUrl)
-  const rawCandidates = [primary, ...resolvePoolApiCandidates(baseUrl)]
-  const candidates = [...new Set(rawCandidates)]
+  const candidates = [primary]
   let lastError: unknown = null
 
   for (const candidate of candidates) {
