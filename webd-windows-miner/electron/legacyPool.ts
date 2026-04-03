@@ -129,6 +129,7 @@ export class LegacyPoolBridge {
   private parsed: ParsedPoolAddress | null = null
   private token = ''
   private workerId = ''
+  private walletAddress = ''
   private connected = false
   private lastError = ''
   private lastJob: LegacyJob | null = null
@@ -137,6 +138,24 @@ export class LegacyPoolBridge {
   private sharesStale = 0
   private rewardPending = 0
   private rewardConfirmed = 0
+
+  private updateRewardStats(payload: any) {
+    if (!payload || typeof payload !== 'object') return
+
+    if (payload.reward !== undefined) {
+      const rewardPending = Number(payload.reward)
+      if (Number.isFinite(rewardPending) && rewardPending >= 0) {
+        this.rewardPending = rewardPending
+      }
+    }
+
+    if (payload.confirmed !== undefined) {
+      const rewardConfirmed = Number(payload.confirmed)
+      if (Number.isFinite(rewardConfirmed) && rewardConfirmed >= 0) {
+        this.rewardConfirmed = rewardConfirmed
+      }
+    }
+  }
 
   async connect(poolAddress: string, walletAddress: string): Promise<{ token: string; workerId: string; poolName: string; poolFee: number }> {
     if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
@@ -159,6 +178,7 @@ export class LegacyPoolBridge {
 
     this.disconnect()
     this.parsed = parsed
+    this.walletAddress = walletAddress.trim()
     this.lastError = ''
     this.lastJob = null
     this.rewardPending = 0
@@ -222,11 +242,13 @@ export class LegacyPoolBridge {
     })
 
     s.on('mining-pool/new-work', (payload: any) => {
+      this.updateRewardStats(payload)
       const parsedWork = parseLegacyWork(payload)
       if (parsedWork) this.lastJob = parsedWork
     })
 
     s.on('mining-pool/get-work/answer', (payload: any) => {
+      this.updateRewardStats(payload)
       const parsedWork = parseLegacyWork(payload)
       if (parsedWork) this.lastJob = parsedWork
     })
@@ -241,8 +263,7 @@ export class LegacyPoolBridge {
           return
         }
 
-        this.rewardPending = Number(answer?.reward ?? 0)
-        this.rewardConfirmed = Number(answer?.confirmed ?? 0)
+        this.updateRewardStats(answer)
 
         // Step 3 of the 3-way handshake: confirm we accepted the pool's answer.
         // Without this, the pool never calls addConnectedMinerPool and won't send work.
@@ -270,6 +291,7 @@ export class LegacyPoolBridge {
       this.socket = null
     }
     this.connected = false
+    this.walletAddress = ''
     this.lastJob = null
     this.rewardPending = 0
     this.rewardConfirmed = 0
@@ -337,6 +359,7 @@ export class LegacyPoolBridge {
       const listener = (answer: any) => {
         clearTimeout(timer)
         this.socket?.off('mining-pool/work-done/answer', listener)
+        this.updateRewardStats(answer)
         resolve(answer)
       }
 
@@ -374,7 +397,7 @@ export class LegacyPoolBridge {
 
     return {
       workerId: this.workerId || 'legacy-worker',
-      walletAddress: '',
+      walletAddress: this.walletAddress,
       lastSeen: Date.now(),
       online: this.connected,
       sharesAccepted: this.sharesAccepted,
