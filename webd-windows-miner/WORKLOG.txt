@@ -235,3 +235,11 @@ Checkpoint 032 (UI trim pass v0.0.2)
 - Hashrate display now shows minimum `1 H/s` while mining is running, even if sampled value is 0.
 - Adjusted visual density (smaller paddings/fonts, compact card grids) for a tighter layout.
 - Build verified successfully after full changes.
+
+Checkpoint 033 (UI cleanup + anti-flicker v0.0.3)
+- Updated app version to `0.0.3` for a separate safe iteration.
+- Removed `Pool key` and `Mining mode` fields from the visible config UI.
+- Kept essential controls requested by user: wallet import/generate/encrypt/unlock, pool URL, save config, start/stop, wallet values.
+- Implemented anti-flicker behavior during mining by making worker auth/job/stats refreshes silent in the mining loop (`runWorkerAuth/loadWorkerJob/loadWorkerStats` with `silent` mode).
+- Result: no repetitive success-banner churn while mining; idle behavior remains unchanged.
+- Build verified successfully after changes.

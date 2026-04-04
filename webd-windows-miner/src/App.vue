@@ -431,14 +431,14 @@ async function refreshPoolAddressReward() {
   }
 }
 
-async function runWorkerAuth() {
+async function runWorkerAuth(silent = false) {
   if (!config.walletAddress) {
     error.value = 'Seteaza sau incarca un wallet inainte de auth.'
     return
   }
 
   error.value = ''
-  success.value = ''
+  if (!silent) success.value = ''
 
   try {
     const walletForAuth = getWalletForAuth()
@@ -449,11 +449,11 @@ async function runWorkerAuth() {
       authResult.value?.workerId ?? '',
       walletForAuth,
     )
-    success.value = `Worker auth reusit: ${authResult.value.workerId}`
+    if (!silent) success.value = `Worker auth reusit: ${authResult.value.workerId}`
     pushLog(`Worker authenticated against ${config.poolUrl}.`)
 
     if (authResult.value?.token) {
-      await loadWorkerStats()
+      await loadWorkerStats(silent)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Worker auth failed.'
@@ -461,20 +461,20 @@ async function runWorkerAuth() {
   }
 }
 
-async function loadWorkerJob() {
+async function loadWorkerJob(silent = false) {
   if (!authResult.value?.token) {
     error.value = 'Fa auth mai intai pentru a cere job.'
     return
   }
 
   error.value = ''
-  success.value = ''
+  if (!silent) success.value = ''
 
   try {
     currentJob.value = await fetchWorkerJob(config.poolUrl, authResult.value.token)
     lastJobReceivedAt.value = Date.now()
     watchdogWarning.value = ''
-    success.value = `Job primit: ${currentJob.value.jobId}`
+    if (!silent) success.value = `Job primit: ${currentJob.value.jobId}`
     const nextJobKey = `${currentJob.value.jobId}:${currentJob.value.height}`
     if (lastLoggedJobKey.value !== nextJobKey) {
       pushLog(`Fetched job ${currentJob.value.jobId} at height ${currentJob.value.height}.`)
@@ -482,7 +482,7 @@ async function loadWorkerJob() {
     }
 
     if (!workerStats.value) {
-      await loadWorkerStats()
+      await loadWorkerStats(silent)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Fetch job failed.'
@@ -490,19 +490,19 @@ async function loadWorkerJob() {
   }
 }
 
-async function loadWorkerStats() {
+async function loadWorkerStats(silent = false) {
   if (!authResult.value?.token) {
     error.value = 'Fa auth mai intai pentru a citi worker stats.'
     return
   }
 
   error.value = ''
-  success.value = ''
+  if (!silent) success.value = ''
 
   try {
     workerStats.value = await fetchWorkerStats(config.poolUrl, authResult.value.token)
     await refreshPoolAddressReward()
-    success.value = 'Worker stats actualizate.'
+    if (!silent) success.value = 'Worker stats actualizate.'
     const latestProtocolEntry = workerStats.value.protocolEvents[0]
     if (latestProtocolEntry && latestProtocolEntry !== lastLoggedProtocolEntry.value) {
       pushLog(`Protocol: ${latestProtocolEntry}`)
@@ -538,7 +538,7 @@ function sleep(ms: number) {
 
 async function ensureAuthAndJob(): Promise<boolean> {
   if (!authResult.value?.token) {
-    await runWorkerAuth()
+    await runWorkerAuth(true)
   }
 
   if (!authResult.value?.token) {
@@ -546,7 +546,7 @@ async function ensureAuthAndJob(): Promise<boolean> {
   }
 
   if (!currentJob.value || Date.now() > currentJob.value.expireAt) {
-    await loadWorkerJob()
+    await loadWorkerJob(true)
   }
 
   return !!currentJob.value && !!authResult.value?.token
@@ -756,22 +756,10 @@ onMounted(() => {
             <input v-model="config.walletAddress" class="field-input" type="text" placeholder="WEBD$..." />
           </label>
 
-          <label class="field">
-            <span>Pool key</span>
-            <input v-model="config.poolKey" class="field-input" type="text" placeholder="Optional" />
+          <label class="toggle-field">
+            <input v-model="config.autoStart" type="checkbox" />
+            <span>Auto-start desktop miner</span>
           </label>
-
-          <div class="field-row">
-            <label class="field compact-field">
-              <span>Mining mode</span>
-              <input class="field-input" type="text" value="PoS single worker" readonly />
-            </label>
-
-            <label class="toggle-field">
-              <input v-model="config.autoStart" type="checkbox" />
-              <span>Auto-start desktop miner</span>
-            </label>
-          </div>
         </article>
 
         <article v-if="showTechDetails" class="panel diagnostics-panel">
