@@ -173,3 +173,9 @@ Checkpoint 023 (Conversation Summary + New Development Base)
 - Wallet total display now uses `totalPOSBalance` as primary source when present, with correct WEBD unit conversion.
 - Project baseline decision recorded by user: this current stable state is the new base for continued development.
 - Saved as git commit `c1b8ba5` and tagged `v1-base` to replace previous "first version" reference.
+
+Checkpoint 024
+- Saved a separate project document: `POOL_REGISTRY_ARCHITECTURE.txt`.
+- Document contains the logical architecture for an open pool registry where anyone can submit a pool and the site verifies it automatically before listing.
+- Recorded permanent resume rule: if user says `reluam aplicatia de minat`, continue from the desktop miner baseline, latest WORKLOG checkpoint and current git state.
+- Recorded permanent collaboration rule: for each new project, ask the user which exact resume words should be used later to continue that specific project.

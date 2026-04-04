@@ -1,0 +1,83 @@
+Arhitectura logica - registry deschis pentru pool-uri WebDollar
+
+Obiectiv
+- Oricine poate propune un pool.
+- Site-ul verifica automat pool-ul inainte sa-l afiseze public.
+- Pool-urile sunt reverificate periodic si isi pot schimba statusul automat.
+
+Flux principal
+1. Submitter trimite pool-ul prin formular.
+2. Sistemul creeaza o inregistrare noua cu status `pending`.
+3. Un serviciu de verificare ruleaza teste automate.
+4. Daca trece pragul minim, pool-ul devine `verified` sau `listed`.
+5. Daca pica testele, intra in `rejected` sau `degraded`.
+6. Un scheduler reverifica periodic toate pool-urile listate.
+
+Componente logice
+1. Public Submit API
+- primeste: nume, host, port, website, fee declarat, payout info, contact, endpoint-uri publice
+- valideaza formatul si duplicatele evidente
+- aplica rate limiting si basic anti-spam
+
+2. Verification Engine
+- verifica DNS
+- verifica reachability pentru host/port
+- verifica raspuns HTTP/HTTPS
+- verifica schema JSON pentru endpoint-uri publice
+- masoara latenta si timpul de raspuns
+- face sanity checks pentru stats: mineri, hashrate, fee, payout values
+- detecteaza redirect-uri suspecte, mismatch de host sau continut invalid
+
+3. Status Evaluator
+- statusuri: pending, verified, listed, degraded, offline, rejected
+- calculeaza un scor de incredere
+- stabileste motivul principal pentru reject/degrade
+
+4. Scheduler
+- pending: verificare imediata si recheck la interval scurt
+- listed/verified: reverificare periodica
+- degraded/offline: retry mai des pana la recuperare sau delist
+
+5. Storage
+- pools
+- verification_runs
+- pool_endpoints
+- incidents
+- submitter_metadata
+- manual_notes
+
+6. Public Listing API
+- expune doar pool-urile aprobate
+- returneaza status, uptime, ultima verificare, scor, fee declarat, fee detectat daca exista
+- poate expune si istoric scurt de disponibilitate
+
+7. Admin Review Layer
+- override manual pentru cazuri limita
+- blacklist pentru host-uri abuzive
+- audit log pentru decizii
+
+Reguli minime de acceptare
+- host rezolvabil
+- endpoint minim accesibil si coerent
+- raspuns stabil la mai multe incercari
+- valori plauzibile
+- fara duplicate evidente
+- fara comportament suspect
+
+Reguli de delistare
+- esec repetat la verificari
+- date incoerente sau manipulate
+- host disparut pe termen suficient
+- abuz/spam/malware suspicion
+
+Protectii importante
+- rate limiting pe submit
+- cooldown pentru reverificari manuale
+- scor separat pentru health si trust
+- detectie duplicate pe host, IP, endpoint signature
+- izolare intre verificarea automata si listarea publica
+
+Observatii pentru proiectul curent
+- Acest document este separat de aplicatia de minat.
+- Baza curenta de dezvoltare ramane aplicatia desktop de minat din `webd-windows-miner`.
+- Cand reluam aplicatia de minat, trebuie pornit de la baseline-ul stabil deja salvat (`v1-base`) si de la checkpoint-urile din WORKLOG.
