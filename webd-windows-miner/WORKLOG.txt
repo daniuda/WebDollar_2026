@@ -197,3 +197,9 @@ Checkpoint 027
 - Document reframes the future public site correctly: main product is a mining page, while the pool registry remains a secondary support module for choosing verified pools.
 - Saved the proposed main user flows: Home/Start Mining, Choose Pool, Pool Details, Submit Pool, Help/Setup.
 - Saved the UX rule that the site must push users toward wallet + pool selection + mining start, not toward an admin-style registry as the primary experience.
+
+Checkpoint 028
+- Updated `MINING_PAGE_UX_FLOW_with_POOL_REGISTRY.txt` with the new mining-first rule: no primary Start button in the ideal flow.
+- Saved the new expected behavior: if the wallet is already imported/unlocked and the user meets the PoS minimum, mining should start automatically when the page opens.
+- Saved the pool-selection rule: choose automatically from the current `verified` / `recommended` pool list, using random selection among healthy online pools.
+- Documented the origin of the `100 WEBD` minimum as a PoS/core protocol rule from `Node-WebDollar`, not as a UI-only rule.

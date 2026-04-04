@@ -3,19 +3,32 @@ Data: 2026-04-04
 
 Principiu
 - Pagina principala nu este un registry general.
-- Pagina principala este despre minat: onboarding, alegere pool, wallet, start mining, stats.
+- Pagina principala este despre minat: onboarding, alegere pool, wallet, auto-start mining, stats.
 - Registry-ul de pool-uri este o functie secundara care ajuta utilizatorul sa aleaga un pool verificat.
 
 Obiectiv UX
 - Utilizatorul ajunge rapid la actiunea principala: sa inceapa minatul.
+- Daca wallet-ul este deja importat si utilizatorul indeplineste conditiile PoS, minatul trebuie sa porneasca automat la deschiderea paginii.
 - Pool-urile propuse/verificate sunt integrate in fluxul de alegere a pool-ului, nu devin centrul produsului.
+
+Regula de auto-start
+- Nu exista buton principal de `Start Mining` in fluxul ideal.
+- Daca exista wallet importat/deblocat si soldul eligibil este cel putin `100 WEBD`, pagina trebuie sa porneasca automat minatul.
+- Pool-ul se alege aleator din lista de pool-uri `verified` sau `recommended` care sunt online si trec pragul minim de health.
+- Daca nu exista wallet importat sau soldul este sub prag, pagina intra in mod ghidat de onboarding/setup.
+
+Originea pragului de 100 WEBD
+- Pragul de `100 WEBD` nu este o regula inventata de UI.
+- In codul WebDollar de baza, regula PoS vine din `Node-WebDollar/src/consts/const_global.js`, unde `POS.MINIMUM_AMOUNT = 100`.
+- Verificarea efectiva apare in `Node-WebDollar/src/common/blockchain/interface-blockchain/mining/Interface-Blockchain-Mining.js`, unde mineritul PoS este refuzat sub acest prag si este afisat mesajul `It is required 100 WEBD to mine POS`.
+- Concluzie: pragul de 100 WEBD este cerut de logica de protocol/core mining PoS, iar pool-ul sau UI-ul doar trebuie sa respecte aceasta regula.
 
 Structura principala de pagini
 1. Home / Start Mining
 - mesaj clar: incepe sa minezi WebDollar
 - alegere rapida wallet + pool + download miner / launch guide
 - top stats sumar: pool-uri online, payout info, mineri activi, uptime
-- CTA principal: `Start Mining`
+- daca wallet-ul este eligibil, pagina intra direct in starea `Mining now`
 - CTA secundar: `Vezi pool-uri verificate`
 
 2. Choose Pool
@@ -45,19 +58,18 @@ Structura principala de pagini
 Fluxul principal pentru utilizator
 Flux A - utilizator nou
 1. Intra pe Home.
-2. Apasa `Start Mining`.
-3. Alege sau importa wallet.
-4. Intra in `Choose Pool`.
-5. Selecteaza un pool verificat.
-6. Primeste link/download/config pentru miner.
-7. Revine pentru stats si monitorizare.
+2. Alege sau importa wallet.
+3. Daca soldul PoS eligibil este sub `100 WEBD`, primeste explicatie si ghid de setup.
+4. Daca soldul este eligibil, sistemul alege automat un pool verificat din lista activa.
+5. Minatul porneste automat.
+6. Utilizatorul vede stats si poate schimba manual pool-ul doar optional.
 
 Flux B - utilizator care vrea doar un pool bun
 1. Intra pe Home.
 2. Apasa `Vezi pool-uri verificate`.
 3. Filtreaza pool-urile.
 4. Deschide `Pool Details`.
-5. Apasa `Foloseste acest pool pentru minat`.
+5. Alege manual un pool alternativ fata de cel ales automat.
 
 Flux C - operator de pool
 1. Intra pe `Submit Pool`.
@@ -68,8 +80,8 @@ Flux C - operator de pool
 
 Ce trebuie sa se vada pe Home
 - headline despre minat
-- explicatie scurta despre cum incepi
-- bloc simplu cu `1. Wallet 2. Pool 3. Start`
+- explicatie scurta despre auto-start daca wallet-ul este eligibil
+- bloc simplu cu `1. Wallet 2. Eligibilitate 3. Mining automat`
 - shortlist cu 3-6 pool-uri recomandate
 - statut general retea/pool-uri
 - link spre documentatie si download miner
@@ -88,7 +100,7 @@ Informatii utile pe cardul de pool
 - uptime recent
 - latenta estimata
 - nr. mineri sau capacitate publica daca exista
-- buton `Mineaza aici`
+- optiune `Selecteaza manual` doar ca override
 
 Statusuri potrivite pentru UI mining-first
 - Recommended
@@ -103,6 +115,13 @@ Reguli de prioritate pentru listare
 3. Pool-uri `New` mai jos, daca au trecut pragul minim
 4. Pool-uri `Degraded` separat
 5. Pool-uri `Offline` ascunse implicit sau intr-o sectiune separata
+
+Reguli pentru alegerea automata a pool-ului
+1. Se folosesc doar pool-uri `Recommended` sau `Verified`.
+2. Pool-ul trebuie sa fie `online` si peste pragul minim de health.
+3. Alegerea este aleatoare din setul eligibil, nu hardcodată.
+4. Optional, randomizarea poate fi ponderata ulterior dupa health score, fee si latenta.
+5. Daca nu exista pool eligibil, pagina afiseaza fallback de selectie manuala.
 
 Componente frontend recomandate
 - MiningHero
@@ -127,4 +146,4 @@ Recomandare de produs
 Concluzie
 - Produsul principal: pagina de minat.
 - Modul secundar: registry de pool-uri verificate.
-- UX-ul trebuie sa impinga utilizatorul spre wallet + alegere pool + start, nu spre browsing administrativ.
+- UX-ul trebuie sa impinga utilizatorul spre wallet + eligibilitate + auto-mining, nu spre browsing administrativ.
