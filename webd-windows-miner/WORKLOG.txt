@@ -203,3 +203,10 @@ Checkpoint 028
 - Saved the new expected behavior: if the wallet is already imported/unlocked and the user meets the PoS minimum, mining should start automatically when the page opens.
 - Saved the pool-selection rule: choose automatically from the current `verified` / `recommended` pool list, using random selection among healthy online pools.
 - Documented the origin of the `100 WEBD` minimum as a PoS/core protocol rule from `Node-WebDollar`, not as a UI-only rule.
+
+Checkpoint 029
+- Resumed mining app work and generated a standalone runnable Windows build output.
+- Fixed Electron packaging version format in `package.json` from `0.001` to valid semver `0.0.1`.
+- Verified full app build steps pass (`typecheck`, renderer build, electron main/preload build).
+- Standalone executable confirmed at `dist/win-unpacked/WebDollar Windows Miner.exe`.
+- NSIS installer generation is currently blocked in this environment by Windows symlink privilege error while extracting `winCodeSign` cache; unpacked executable build remains usable for independent run/testing.
