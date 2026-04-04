@@ -1,0 +1,213 @@
+Plan de integrare - pool registry bazat pe WebDollar/vue-Frontend
+Data: 2026-04-04
+
+Scop
+- Sa folosim ideea de frontend public de tip `vue-Frontend` pentru un viitor `pool_registry`.
+- Sa pastram frontend-ul ca interfata publica, iar verificarea automata sa ramana in backend.
+
+Principiu de arhitectura
+- Frontendul afiseaza si colecteaza date.
+- Backendul valideaza, verifica, evalueaza si publica statusul pool-urilor.
+- Workerul periodic ruleaza reverificari si actualizeaza starea pool-urilor.
+
+Modul 1 - Public Pages
+Rol
+- paginile vizibile public pentru utilizatori.
+
+Submodule
+1. Homepage Pool Registry
+- explicatie scurta despre ce este registry-ul
+- statistici generale: numar pool-uri, verified, degraded, offline
+- link spre submit si lista publica
+
+2. Pool List Page
+- tabel/carduri cu toate pool-urile publicate
+- filtre: online, verified, fee, payout type, latency, country daca exista
+- sortari: health score, uptime, numar mineri, fee
+
+3. Pool Details Page
+- date pool
+- uptime recent
+- istoric statusuri
+- endpoint-uri validate
+- ultima verificare
+- incidente recente
+
+4. Submit Pool Page
+- formular public de propunere
+- validare client-side minima
+- mesaj clar ca listarea este conditionata de verificare automata
+
+Modul 2 - Frontend Data Layer
+Rol
+- consum API si management stare UI.
+
+Submodule
+1. Pool Registry API Client
+- `GET /api/pools`
+- `GET /api/pools/:id`
+- `POST /api/pools/submit`
+- `GET /api/pools/stats`
+
+2. State Store
+- lista pool-uri
+- filtre active
+- statistici agregate
+- status submit curent
+
+3. UI Mapping Layer
+- transforma raspunsurile backend in modele simple pentru carduri/tabele/grafice
+- normalizeaza badge-uri si culori de status
+
+Modul 3 - Verification Backend
+Rol
+- logica reala de verificare automata.
+
+Submodule
+1. Submit Handler
+- primește submit-ul
+- normalizeaza host/URL/port
+- detecteaza duplicate simple
+- salveaza pool-ul cu status `pending`
+
+2. Connectivity Checker
+- DNS resolve
+- TCP reachability
+- HTTP/HTTPS checks
+- timeout control
+
+3. Endpoint Schema Checker
+- valideaza endpoint-urile cerute de registry
+- valideaza structura JSON
+- verifica tipuri minime si coerenta campurilor
+
+4. Health Evaluator
+- uptime score
+- latency score
+- consistency score
+- trust flags
+- verdict final: pending, verified, listed, degraded, offline, rejected
+
+5. Incident Recorder
+- retine erori si motive de reject/degrade
+- tine audit trail pentru fiecare run
+
+Modul 4 - Scheduled Verification Worker
+Rol
+- reverificari automate.
+
+Reguli
+- pool nou: verificare imediata
+- pool verified/listed: reverificare periodica
+- pool degraded/offline: retry mai des
+- pool rejected: retry doar manual sau dupa cooldown
+
+Submodule
+1. Scheduler
+2. Retry Policy
+3. Change Detector
+4. Notification Hook optional
+
+Modul 5 - Storage
+Tabele/colecții recomandate
+1. `pools`
+- id
+- name
+- host
+- port
+- website
+- feeDeclared
+- payoutInfo
+- currentStatus
+- currentScore
+- createdAt
+- updatedAt
+
+2. `pool_verification_runs`
+- poolId
+- startedAt
+- finishedAt
+- statusResult
+- latencyMs
+- checksJson
+- errorSummary
+
+3. `pool_incidents`
+- poolId
+- severity
+- message
+- createdAt
+
+4. `pool_submissions`
+- raw submit data
+- submitter metadata
+- rate limit metadata
+
+Modul 6 - Admin Layer
+Rol
+- control manual pentru cazuri limită.
+
+Functii
+- force approve
+- force reject
+- blacklist host
+- mark suspicious
+- add manual note
+
+Cum s-ar integra concret in `vue-Frontend`
+1. Pagini noi
+- `src/pages/pool-registry/Home`
+- `src/pages/pool-registry/List`
+- `src/pages/pool-registry/Details`
+- `src/pages/pool-registry/Submit`
+
+2. Router
+- rute publice dedicate pentru pool registry
+
+3. Store
+- modul separat pentru registry, fara sa amestecam logica cu alte zone ale site-ului
+
+4. Components
+- `PoolCard`
+- `PoolStatusBadge`
+- `PoolHealthChart`
+- `PoolSubmitForm`
+- `PoolFilters`
+- `PoolIncidentList`
+
+5. Services
+- `poolRegistryApi.js`
+- `poolRegistryMapper.js`
+- `poolRegistryValidators.js`
+
+Ce NU trebuie pus in frontend
+- scanari brute de retea ca sursa de adevar
+- verificari de incredere finale
+- rate limiting real
+- logică de status oficial
+- secrete sau chei administrative
+
+Implementare in etape
+Etapa 1
+- lista publica simpla + statusuri mock/backend minim
+
+Etapa 2
+- submit form + API submit
+
+Etapa 3
+- verification backend minim: DNS, reachability, endpoint response
+
+Etapa 4
+- scoring, incidente, reverificari automate
+
+Etapa 5
+- admin tools + istoric public + grafice health
+
+Decizie de produs recomandata
+- Daca proiectul se face serios, mai bine folosim aceasta schema functionala, dar construim pe stack modern.
+- `vue-Frontend` ramane o referinta buna pentru organizarea unui site public WebDollar, nu neaparat baza tehnica ideala.
+
+Legatura cu proiectul curent
+- Proiectul principal ramane `webd-windows-miner`.
+- Acest plan este doar pentru un proiect viitor de `pool_registry` sau site public.
+- Daca utilizatorul spune `reluam aplicatia de minat`, reluarea trebuie facuta din minerul desktop, nu din aceasta directie secundara.

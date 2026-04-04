@@ -185,3 +185,9 @@ Checkpoint 025
 - Source documented: `https://github.com/WebDollar/vue-Frontend`.
 - Saved a practical summary of the repo purpose, tech stack, build commands and how it can help as inspiration for a future public WebDollar website or pool registry.
 - Explicitly recorded that this external repo is reference material only; the active main project remains the desktop mining app.
+
+Checkpoint 026
+- Saved `POOL_REGISTRY_INTEGRATION_PLAN_vue-Frontend.txt`.
+- Document describes how a future pool registry could be split into modules if `vue-Frontend` is used only as inspiration/basis for the public UI layer.
+- Explicitly separated responsibilities between frontend pages, API client/store, verification backend, scheduled worker, storage and admin layer.
+- Reconfirmed in the saved plan that the active main project remains the desktop mining app and that `reluam aplicatia de minat` must resume from the miner state.
