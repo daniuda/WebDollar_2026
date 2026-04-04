@@ -217,3 +217,9 @@ Checkpoint 030
 - Kept core controls in primary view: wallet operations, pool config, save config, refresh pool, start/stop mining, wallet value cards.
 - Moved technical/noisy areas behind `Detalii tehnice` by showing build marker and pool diagnostics panel only when advanced details are enabled.
 - Build verified successfully after UI adjustments.
+
+Checkpoint 031
+- Removed the left sidebar info blocks from the main UI (Desktop prototype, Runtime, Status MVP), as requested.
+- Kept main mining controls and content area as primary focus.
+- Disabled the default Electron application menu (`Menu.setApplicationMenu(null)`), which removes the Help menu from the window.
+- Build verified successfully after UI and Electron menu cleanup.

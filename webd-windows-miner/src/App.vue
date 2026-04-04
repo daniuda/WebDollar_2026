@@ -785,30 +785,6 @@ onMounted(() => {
 
 <template>
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-block">
-        <p class="eyebrow">Desktop prototype</p>
-        <h1>WebDollar Windows Miner</h1>
-        <p class="sidebar-copy">
-          Primul MVP desktop pentru validarea flow-ului wallet, pool si mining inainte de revenirea pe Android.
-        </p>
-      </div>
-
-      <div class="sidebar-panel">
-        <p class="panel-label">Runtime</p>
-        <p class="panel-value">{{ meta.platform }}</p>
-        <p class="panel-meta">Version {{ meta.version }}</p>
-      </div>
-
-      <div class="sidebar-panel">
-        <p class="panel-label">Status MVP</p>
-        <ul class="status-list">
-          <li>Electron shell</li>
-          <li>Config persistence</li>
-        </ul>
-      </div>
-    </aside>
-
     <main class="content">
       <header class="hero">
         <div>

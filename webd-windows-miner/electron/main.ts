@@ -187,6 +187,8 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
+
   ipcMain.handle('app:get-meta', () => ({
     version: appVersion,
     platform: process.platform,
