@@ -820,7 +820,6 @@ onMounted(() => {
         </div>
 
         <div class="hero-actions">
-          <button class="ghost-btn" :disabled="saving" @click="toggleSimpleMode">{{ config.simpleMode ? 'Advanced mode' : 'Miner only mode' }}</button>
           <button class="ghost-btn" @click="showTechDetails = !showTechDetails">{{ showTechDetails ? 'Ascunde detalii' : 'Detalii tehnice' }}</button>
           <button class="ghost-btn" :disabled="loading" @click="refreshPoolStats">Refresh pool</button>
           <button class="primary-btn" :disabled="saving" @click="persistConfig">{{ saving ? 'Saving...' : 'Save config' }}</button>
@@ -831,7 +830,7 @@ onMounted(() => {
       <p v-if="success" class="banner success-banner">{{ success }}</p>
       <p v-if="watchdogWarning" class="banner error-banner">{{ watchdogWarning }}</p>
 
-      <section class="build-marker-card">
+      <section v-if="showTechDetails" class="build-marker-card">
         <p class="build-marker-label">Marker versiune rulata</p>
         <p class="build-marker-value">{{ BUILD_MARKER }}</p>
         <p class="panel-meta">Daca vezi exact acest text, rulezi build-ul nou cu protocol log si fixul pentru pools/all-miners.</p>
@@ -844,7 +843,7 @@ onMounted(() => {
         </article>
       </section>
 
-      <section v-if="!config.simpleMode" class="layout-grid">
+      <section class="layout-grid">
         <article class="panel form-panel">
           <div class="section-head">
             <div>
@@ -882,7 +881,7 @@ onMounted(() => {
           </div>
         </article>
 
-        <article class="panel diagnostics-panel">
+        <article v-if="showTechDetails" class="panel diagnostics-panel">
           <div class="section-head">
             <div>
               <p class="eyebrow">Diagnostics</p>
@@ -911,7 +910,7 @@ onMounted(() => {
         </article>
       </section>
 
-      <section v-if="!config.simpleMode" class="layout-grid wallet-grid">
+      <section class="layout-grid wallet-grid">
         <article class="panel form-panel">
           <div class="section-head">
             <div>

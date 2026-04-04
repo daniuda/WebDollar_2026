@@ -210,3 +210,10 @@ Checkpoint 029
 - Verified full app build steps pass (`typecheck`, renderer build, electron main/preload build).
 - Standalone executable confirmed at `dist/win-unpacked/WebDollar Windows Miner.exe`.
 - NSIS installer generation is currently blocked in this environment by Windows symlink privilege error while extracting `winCodeSign` cache; unpacked executable build remains usable for independent run/testing.
+
+Checkpoint 030
+- Simplified the main UI header while keeping essential mining controls visible.
+- Removed the top toggle for simple/advanced mode from hero actions.
+- Kept core controls in primary view: wallet operations, pool config, save config, refresh pool, start/stop mining, wallet value cards.
+- Moved technical/noisy areas behind `Detalii tehnice` by showing build marker and pool diagnostics panel only when advanced details are enabled.
+- Build verified successfully after UI adjustments.
