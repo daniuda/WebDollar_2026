@@ -1,0 +1,130 @@
+Flux propus - produs principal: pagina de minat, cu pool registry ca modul secundar
+Data: 2026-04-04
+
+Principiu
+- Pagina principala nu este un registry general.
+- Pagina principala este despre minat: onboarding, alegere pool, wallet, start mining, stats.
+- Registry-ul de pool-uri este o functie secundara care ajuta utilizatorul sa aleaga un pool verificat.
+
+Obiectiv UX
+- Utilizatorul ajunge rapid la actiunea principala: sa inceapa minatul.
+- Pool-urile propuse/verificate sunt integrate in fluxul de alegere a pool-ului, nu devin centrul produsului.
+
+Structura principala de pagini
+1. Home / Start Mining
+- mesaj clar: incepe sa minezi WebDollar
+- alegere rapida wallet + pool + download miner / launch guide
+- top stats sumar: pool-uri online, payout info, mineri activi, uptime
+- CTA principal: `Start Mining`
+- CTA secundar: `Vezi pool-uri verificate`
+
+2. Choose Pool
+- lista de pool-uri recomandate/verificate
+- carduri cu status, fee, payout, uptime, nr. mineri, latenta
+- filtru simplu: recommended / all / low fee / low latency
+- actiune pe fiecare card: `Mineaza cu acest pool`
+
+3. Pool Details
+- informatii detaliate pentru un pool selectat
+- endpoint-uri publice
+- health status
+- istoric uptime
+- payout info
+- buton principal: `Foloseste acest pool pentru minat`
+
+4. Submit Pool
+- pagina secundara pentru propuneri noi
+- formular public
+- mesaj clar ca listarea se face doar dupa verificare automata
+
+5. Mining Help / Setup
+- instructiuni de setup
+- wallet help
+- explicatii despre payout, fee, status pool
+
+Fluxul principal pentru utilizator
+Flux A - utilizator nou
+1. Intra pe Home.
+2. Apasa `Start Mining`.
+3. Alege sau importa wallet.
+4. Intra in `Choose Pool`.
+5. Selecteaza un pool verificat.
+6. Primeste link/download/config pentru miner.
+7. Revine pentru stats si monitorizare.
+
+Flux B - utilizator care vrea doar un pool bun
+1. Intra pe Home.
+2. Apasa `Vezi pool-uri verificate`.
+3. Filtreaza pool-urile.
+4. Deschide `Pool Details`.
+5. Apasa `Foloseste acest pool pentru minat`.
+
+Flux C - operator de pool
+1. Intra pe `Submit Pool`.
+2. Completeaza formularul.
+3. Pool-ul intra in `pending`.
+4. Sistemul face verificare automata.
+5. Daca trece, apare in `Choose Pool` si in lista publica.
+
+Ce trebuie sa se vada pe Home
+- headline despre minat
+- explicatie scurta despre cum incepi
+- bloc simplu cu `1. Wallet 2. Pool 3. Start`
+- shortlist cu 3-6 pool-uri recomandate
+- statut general retea/pool-uri
+- link spre documentatie si download miner
+
+Ce trebuie sa NU domine Home
+- tabele administrative lungi
+- formularul de submit pool direct in prim-plan
+- incidente tehnice detaliate
+- statusuri interne prea tehnice fara context
+
+Informatii utile pe cardul de pool
+- nume pool
+- badge status: verified / degraded / offline
+- fee
+- payout minim
+- uptime recent
+- latenta estimata
+- nr. mineri sau capacitate publica daca exista
+- buton `Mineaza aici`
+
+Statusuri potrivite pentru UI mining-first
+- Recommended
+- Verified
+- Degraded
+- Offline
+- New
+
+Reguli de prioritate pentru listare
+1. Pool-uri `Recommended` sus
+2. Pool-uri `Verified` dupa scor
+3. Pool-uri `New` mai jos, daca au trecut pragul minim
+4. Pool-uri `Degraded` separat
+5. Pool-uri `Offline` ascunse implicit sau intr-o sectiune separata
+
+Componente frontend recomandate
+- MiningHero
+- QuickStartSteps
+- RecommendedPoolsStrip
+- PoolCard
+- PoolStatusBadge
+- PoolFilters
+- PoolDetailsPanel
+- SubmitPoolForm
+- HelpAccordion
+
+Legatura cu backend-ul
+- frontendul cere doar datele necesare pentru UX de minat
+- backendul decide cine este verified/recommended
+- frontendul nu decide singur increderea unui pool
+
+Recomandare de produs
+- Daca facem site-ul, numele si navigatia trebuie sa porneasca de la `Start Mining`, nu de la `Pool Registry`.
+- Registry-ul trebuie sa existe, dar ca infrastructura de suport pentru alegerea unui pool bun.
+
+Concluzie
+- Produsul principal: pagina de minat.
+- Modul secundar: registry de pool-uri verificate.
+- UX-ul trebuie sa impinga utilizatorul spre wallet + alegere pool + start, nu spre browsing administrativ.

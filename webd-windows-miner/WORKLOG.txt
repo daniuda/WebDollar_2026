@@ -191,3 +191,9 @@ Checkpoint 026
 - Document describes how a future pool registry could be split into modules if `vue-Frontend` is used only as inspiration/basis for the public UI layer.
 - Explicitly separated responsibilities between frontend pages, API client/store, verification backend, scheduled worker, storage and admin layer.
 - Reconfirmed in the saved plan that the active main project remains the desktop mining app and that `reluam aplicatia de minat` must resume from the miner state.
+
+Checkpoint 027
+- Saved `MINING_PAGE_UX_FLOW_with_POOL_REGISTRY.txt`.
+- Document reframes the future public site correctly: main product is a mining page, while the pool registry remains a secondary support module for choosing verified pools.
+- Saved the proposed main user flows: Home/Start Mining, Choose Pool, Pool Details, Submit Pool, Help/Setup.
+- Saved the UX rule that the site must push users toward wallet + pool selection + mining start, not toward an admin-style registry as the primary experience.
