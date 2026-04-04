@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   decryptDesktopSecret,
   encryptDesktopSecret,
-  exportDesktopLegacyWallet,
   generateDesktopWallet,
   getDesktopMeta,
   importDesktopWalletRaw,
@@ -40,7 +39,7 @@ const config = reactive<DesktopAppConfig>({
   payoutTarget: 1,
 })
 
-const meta = ref<AppMeta>({ version: '0.001', platform: 'win32' })
+const meta = ref<AppMeta>({ version: '0.0.2', platform: 'win32' })
 const stats = ref<PoolStats | null>(null)
 const currentWallet = ref<GeneratedWallet | null>(null)
 const authResult = ref<AuthResult | null>(null)
@@ -53,7 +52,6 @@ const saving = ref(false)
 const error = ref('')
 const success = ref('')
 const lastUpdated = ref('')
-const walletExportOutput = ref('')
 const walletPassword = ref('')
 const walletUnlockPassword = ref('')
 const miningRunning = ref(false)
@@ -69,7 +67,6 @@ const lastLoggedJobKey = ref('')
 const lastLoggedProtocolEntry = ref('')
 const watchdogWarning = ref('')
 const lastJobReceivedAt = ref(0)
-const earningsHistory = ref<Array<{ ts: number; total: number }>>([])
 let workerStatsTimer: ReturnType<typeof setInterval> | null = null
 let watchdogTimer: ReturnType<typeof setInterval> | null = null
 let miningStopRequested = false
@@ -179,69 +176,15 @@ const payoutThresholdInfo = computed(() => {
   }
 })
 
-const earningsBars = computed(() => {
-  const items = [...earningsHistory.value].reverse()
-  if (items.length === 0) return []
-
-  const values = items.map((x) => x.total)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const diff = Math.max(max - min, 0.000001)
-
-  return items.map((item, index) => {
-    const height = Math.max(8, Math.round(((item.total - min) / diff) * 100))
-    return {
-      key: `${item.ts}-${index}`,
-      height,
-      title: `${new Date(item.ts).toLocaleTimeString('ro-RO')} - ${item.total.toFixed(6)} WEBD`,
-    }
-  })
-})
-
-const payoutEtaLabel = computed(() => {
-  const target = Number(config.payoutTarget || 0)
-  const current = walletTotalsRaw.value.total
-
-  if (!Number.isFinite(target) || target <= 0) return 'Seteaza un target > 0 WEBD.'
-  if (current >= target) return 'Target atins.'
-  if (earningsHistory.value.length < 2) return 'Estimare in asteptare (date insuficiente).'
-
-  const latest = earningsHistory.value[0]
-  const oldest = earningsHistory.value[earningsHistory.value.length - 1]
-  const rewardDelta = latest.total - oldest.total
-  const hours = Math.max((latest.ts - oldest.ts) / 3_600_000, 0)
-
-  if (rewardDelta <= 0 || hours <= 0) return 'Estimare indisponibila (crestere 0).'
-
-  const ratePerHour = rewardDelta / hours
-  if (ratePerHour <= 0) return 'Estimare indisponibila.'
-
-  const remaining = target - current
-  const hoursLeft = remaining / ratePerHour
-  if (!Number.isFinite(hoursLeft) || hoursLeft <= 0) return 'Target atins.'
-
-  const wholeHours = Math.floor(hoursLeft)
-  const wholeMinutes = Math.floor((hoursLeft - wholeHours) * 60)
-  return `~${wholeHours}h ${wholeMinutes}m pana la ${target.toFixed(3)} WEBD`
+const miningHashrateDisplay = computed(() => {
+  if (miningRunning.value && miningHashrate.value <= 0) return 1
+  return miningHashrate.value
 })
 
 function pushLog(message: string) {
   // Avoid inserting the same message repeatedly at the top of the activity log.
   if (activityLog.value[0] === message) return
   activityLog.value = [message, ...activityLog.value].slice(0, 10)
-}
-
-function recordEarningsSnapshot() {
-  const total = walletTotalsRaw.value.total
-  const now = Date.now()
-  const first = earningsHistory.value[0]
-
-  if (first && now - first.ts < 55_000) {
-    earningsHistory.value[0] = { ts: now, total }
-    return
-  }
-
-  earningsHistory.value = [{ ts: now, total }, ...earningsHistory.value].slice(0, 48)
 }
 
 function startWorkerStatsTimer() {
@@ -283,24 +226,18 @@ function stopWatchdogTimer() {
   }
 }
 
-function toggleSimpleMode() {
-  config.simpleMode = !config.simpleMode
-  void persistConfig()
-}
-
 const walletSummary = computed(() => {
+  const rawAddress = currentWallet.value?.address || config.walletAddress || '-'
+  const displayAddress = rawAddress === '-' ? '-' : rawAddress.replace(/\//g, '$')
+
   if (!currentWallet.value) {
     return {
-      address: config.walletAddress || '-',
-      publicKey: '-',
-      secret: config.walletEncrypted ? 'Encrypted locally' : '-',
+      address: displayAddress,
     }
   }
 
   return {
-    address: currentWallet.value.address,
-    publicKey: currentWallet.value.publicKeyHex,
-    secret: `${currentWallet.value.secretHex.slice(0, 16)}...`,
+    address: displayAddress,
   }
 })
 
@@ -374,7 +311,6 @@ async function persistConfig() {
 function applyWallet(wallet: GeneratedWallet, source: string) {
   currentWallet.value = wallet
   config.walletAddress = wallet.address
-  walletExportOutput.value = ''
   pushLog(`Wallet loaded from ${source}: ${wallet.address}`)
 }
 
@@ -419,24 +355,6 @@ async function importWalletFromFile() {
     success.value = 'Wallet .webd importat cu succes.'
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Wallet .webd import failed.'
-  }
-}
-
-async function exportWallet() {
-  if (!currentWallet.value) {
-    error.value = 'Nu exista wallet incarcat pentru export.'
-    return
-  }
-
-  error.value = ''
-  success.value = ''
-
-  try {
-    walletExportOutput.value = await exportDesktopLegacyWallet(currentWallet.value.secretHex)
-    success.value = 'Export .webd pregatit.'
-    pushLog('Generated legacy .webd export preview.')
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Wallet export failed.'
   }
 }
 
@@ -584,7 +502,6 @@ async function loadWorkerStats() {
   try {
     workerStats.value = await fetchWorkerStats(config.poolUrl, authResult.value.token)
     await refreshPoolAddressReward()
-    recordEarningsSnapshot()
     success.value = 'Worker stats actualizate.'
     const latestProtocolEntry = workerStats.value.protocolEvents[0]
     if (latestProtocolEntry && latestProtocolEntry !== lastLoggedProtocolEntry.value) {
@@ -893,36 +810,23 @@ onMounted(() => {
               <p class="eyebrow">Wallet compatibility</p>
               <h3>Legacy .webd operations</h3>
             </div>
-            <p class="panel-meta">Android-compatible format bridge.</p>
           </div>
 
           <div class="hero-actions wallet-actions">
             <button class="primary-btn" @click="generateWallet">Generate wallet</button>
             <button class="ghost-btn" @click="importWalletFromFile">Import .webd file</button>
-            <button class="ghost-btn" @click="exportWallet">Export .webd</button>
           </div>
-
-          <p class="panel-meta wallet-import-hint">Importul se face direct din fisier `.webd` selectat local, fara paste de text brut.</p>
 
           <div class="wallet-summary-grid">
             <div>
-              <p class="metric-label">Address</p>
+              <p class="metric-label">Wallet address</p>
               <p class="metric-value small-value">{{ walletSummary.address }}</p>
             </div>
             <div>
-              <p class="metric-label">Public key</p>
-              <p class="metric-value small-value">{{ walletSummary.publicKey }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Secret status</p>
-              <p class="metric-value small-value">{{ walletSummary.secret }}</p>
+              <p class="metric-label">Wallet total portofel (balance pool)</p>
+              <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
             </div>
           </div>
-
-          <label class="field">
-            <span>Legacy .webd export preview</span>
-            <textarea v-model="walletExportOutput" class="field-input field-textarea" rows="8" readonly placeholder="Exportul .webd va aparea aici" />
-          </label>
         </article>
 
         <article class="panel diagnostics-panel">
@@ -983,7 +887,7 @@ onMounted(() => {
             </div>
             <div>
               <p class="metric-label">Hashrate</p>
-              <p class="metric-value small-value">{{ miningHashrate }} H/s</p>
+              <p class="metric-value small-value">{{ miningHashrateDisplay }} H/s</p>
             </div>
           </div>
 
@@ -1095,31 +999,6 @@ onMounted(() => {
             </div>
           </div>
           <p v-if="showTechDetails" class="panel-meta">Sursa payout: {{ poolPayoutCards.source }}</p>
-
-          <label class="field">
-            <span>Payout target (WEBD)</span>
-            <input v-model.number="config.payoutTarget" class="field-input" type="number" min="0.001" step="0.001" @blur="persistConfig" />
-          </label>
-
-          <div class="diagnostics-grid encrypted-grid">
-            <div>
-              <p class="metric-label">ETA payout</p>
-              <p class="metric-value small-value">{{ payoutEtaLabel }}</p>
-            </div>
-          </div>
-
-          <div class="timeline">
-            <p class="metric-label">Earnings trend (ultimele snapshot-uri)</p>
-            <div class="earnings-chart">
-              <div
-                v-for="bar in earningsBars"
-                :key="bar.key"
-                class="earnings-bar"
-                :style="{ height: `${bar.height}%` }"
-                :title="bar.title"
-              />
-            </div>
-          </div>
 
           <template v-if="showTechDetails">
             <div class="diagnostics-grid encrypted-grid">

@@ -131,14 +131,14 @@ button {
 }
 
 .content {
-  padding: 28px;
+  padding: 22px;
   display: grid;
   gap: 18px;
 }
 
 .hero,
 .panel {
-  padding: 22px;
+  padding: 18px;
 }
 
 .hero {
@@ -152,7 +152,7 @@ button {
 }
 
 .hero h2 {
-  font-size: 40px;
+  font-size: 34px;
 }
 
 .hero-actions {
@@ -243,13 +243,13 @@ button {
 
 .metric-value {
   margin: 6px 0 0;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: #fff7e8;
 }
 
 .small-value {
-  font-size: 18px;
+  font-size: 16px;
   word-break: break-word;
 }
 
@@ -346,7 +346,7 @@ button {
 .wallet-summary-grid,
 .encrypted-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -393,6 +393,11 @@ button {
   }
 
   .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wallet-summary-grid,
+  .encrypted-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -147,3 +147,22 @@ Concluzie
 - Produsul principal: pagina de minat.
 - Modul secundar: registry de pool-uri verificate.
 - UX-ul trebuie sa impinga utilizatorul spre wallet + eligibilitate + auto-mining, nu spre browsing administrativ.
+
+Plan iteratie UI v0.0.2 (trim pass)
+1. Eliminari UI cerute
+- nu mai afisam `Public key`, `Secret status`, `Legacy .webd export preview`
+- nu mai afisam textele: `Android-compatible format bridge` si `Importul se face direct din fisier...`
+- nu mai afisam `Payout target`, `ETA payout`, `Earnings trend`
+
+2. Afisari noi/ajustate
+- adresa wallet este afisata in format cu `$`
+- in zona wallet afisam si `Wallet total portofel (balance pool)` dupa legarea la pool
+- daca minerul ruleaza si hashrate calculat este 0, afisam minim `1 H/s`
+
+3. Layout
+- reducere dimensiuni vizuale (padding/font) si grupare mai compacta
+- impartire pe carduri mai mici pentru citire rapida
+
+4. Siguranta de iteratie
+- versiunea aplicatiei creste la `0.0.2`
+- baza anterioara ramane in istoric git pentru rollback rapid daca e nevoie

@@ -223,3 +223,15 @@ Checkpoint 031
 - Kept main mining controls and content area as primary focus.
 - Disabled the default Electron application menu (`Menu.setApplicationMenu(null)`), which removes the Help menu from the window.
 - Build verified successfully after UI and Electron menu cleanup.
+
+Checkpoint 032 (UI trim pass v0.0.2)
+- Updated app version to `0.0.2` as a new iteration marker.
+- Implemented requested UI removals in wallet/mining diagnostics area:
+	- removed `Public key`, `Secret status`, `Legacy .webd export preview`
+	- removed texts `Android-compatible format bridge` and `Importul se face direct din fisier ...`
+	- removed `Payout target`, `ETA payout`, and `Earnings trend` blocks
+- Wallet address display is now normalized with `$` separators for UI readability.
+- Added wallet total (`Wallet total portofel (balance pool)`) next to wallet address in the wallet panel.
+- Hashrate display now shows minimum `1 H/s` while mining is running, even if sampled value is 0.
+- Adjusted visual density (smaller paddings/fonts, compact card grids) for a tighter layout.
+- Build verified successfully after full changes.
