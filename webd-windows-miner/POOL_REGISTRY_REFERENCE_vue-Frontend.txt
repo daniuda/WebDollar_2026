@@ -1,0 +1,68 @@
+Referinta pentru mai tarziu - WebDollar/vue-Frontend
+Sursa: https://github.com/WebDollar/vue-Frontend
+Data sumarizarii: 2026-04-04
+
+Scop repo
+- Frontend public WebDollar pentru site-ul webdollar.io.
+- Folosit ca referinta functionala pentru un site public WebDollar, nu ca sursa de copiere 1:1.
+
+Observatii principale
+- Stack vechi dar complet functional pentru site public: Vue 2 + Vue Router + Vuex + Webpack.
+- Repo-ul este orientat spre website static/public, cu build in `dist/`.
+- Este util mai ales ca reper de structura pentru:
+  - homepage/public landing
+  - pagini informative WebDollar
+  - stats/explorer-style modules
+  - navigatie publica si deploy static
+
+Semnale tehnice utile
+- Node: >= 16
+- npm: >= 8
+- Build tool: Webpack 5
+- Framework UI: Vue 2.7.x
+- State: Vuex 3
+- Routing: vue-router 3
+- HTTP/data: axios
+- Vizualizare date: chart.js
+- i18n: vue-i18n
+- Servire locala: `serve`
+
+Scripturi importante
+- `npm install`
+- `npm run build` -> alias pentru build static de development
+- `npm run build:static-prod` -> build productie
+- `npm run start` -> build static + serve local
+
+Artefacte si structura observate
+- `src/` -> logica frontend principala
+- `public/` -> asset-uri publice/statice
+- `build/` -> configurari webpack
+- `server.js` -> suport runtime local / hosting helper
+- `dist/` -> output de productie
+
+Ce este relevant pentru proiectul nostru de pool registry
+1. Referinta de site public
+- repo-ul confirma ca un frontend WebDollar public poate fi livrat ca website static.
+- pentru pool registry, asta sustine o arhitectura separata de aplicatia desktop de minat.
+
+2. Module pe care le-am putea prelua doar ca idee
+- landing page publica
+- listare/stats in tabele sau carduri
+- grafice pentru uptime/latenta/numar mineri
+- pagini statice pentru documentatie, FAQ, onboarding
+- pagina dedicata pentru detalii pool
+
+3. Lucruri pe care NU trebuie sa le copiem direct
+- design identic
+- texte identice
+- asset-uri/logo-uri/imagini fara verificare
+- structura exacta a paginilor daca vrem produs separat
+
+4. Directie recomandata pentru viitor
+- pentru proiect nou, mai bine folosim stack modern (de exemplu Vue 3 + Vite sau React/Vite), nu clonam stack-ul vechi Vue 2 + Webpack.
+- pastram `vue-Frontend` doar ca referinta functionala si de continut modular.
+
+Concluzie de lucru
+- `WebDollar/vue-Frontend` este util ca documentatie vie pentru ce inseamna un frontend public WebDollar complet.
+- Pentru `pool_registry`, repo-ul trebuie folosit ca inspiratie pentru module si fluxuri, nu ca blueprint copiat.
+- Aplicatia principala la care am ramas este in continuare `webd-windows-miner`; acest document este doar referinta secundara pentru un posibil proiect viitor.

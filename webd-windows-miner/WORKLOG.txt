@@ -179,3 +179,9 @@ Checkpoint 024
 - Document contains the logical architecture for an open pool registry where anyone can submit a pool and the site verifies it automatically before listing.
 - Recorded permanent resume rule: if user says `reluam aplicatia de minat`, continue from the desktop miner baseline, latest WORKLOG checkpoint and current git state.
 - Recorded permanent collaboration rule: for each new project, ask the user which exact resume words should be used later to continue that specific project.
+
+Checkpoint 025
+- Saved a future-reference document for `pool_registry`: `POOL_REGISTRY_REFERENCE_vue-Frontend.txt`.
+- Source documented: `https://github.com/WebDollar/vue-Frontend`.
+- Saved a practical summary of the repo purpose, tech stack, build commands and how it can help as inspiration for a future public WebDollar website or pool registry.
+- Explicitly recorded that this external repo is reference material only; the active main project remains the desktop mining app.
