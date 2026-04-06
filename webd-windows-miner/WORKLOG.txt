@@ -243,3 +243,16 @@ Checkpoint 033 (UI cleanup + anti-flicker v0.0.3)
 - Implemented anti-flicker behavior during mining by making worker auth/job/stats refreshes silent in the mining loop (`runWorkerAuth/loadWorkerJob/loadWorkerStats` with `silent` mode).
 - Result: no repetitive success-banner churn while mining; idle behavior remains unchanged.
 - Build verified successfully after changes.
+
+Checkpoint 034 (Beta prep: cleanup + installer + docs)
+- Removed beta-internal marker text from UI (build marker card and message for protocol-log/pool-host-fix are no longer visible in executable build).
+- Replaced top header placeholder texts (`Phase 1 running`, `Desktop control surface`, and follow-up line) with `WEBDOLLAR Windows Miner`.
+- Hid temporary diagnostics block from main view to avoid exposing noisy `Pool Legacy poll`/pool visibility rows during beta.
+- Normalized `Local config -> Wallet address` input for UI readability: displays `$` but persists `/` internally for protocol compatibility.
+- Verified build successfully (`npm run build`).
+- Generated Windows NSIS installer successfully (`npm run dist`).
+- Installer artifact: `dist/WebDollar Windows Miner Setup 0.0.3.exe`.
+- Standalone artifact: `dist/win-unpacked/WebDollar Windows Miner.exe`.
+- Added beta release checklist and user guide documents for publishing and support handoff.
+- Saved discussion snapshot for session continuity.
+

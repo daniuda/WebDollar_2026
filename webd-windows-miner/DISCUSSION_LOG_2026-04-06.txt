@@ -1,0 +1,41 @@
+Discussion log - 2026-04-06
+Project: webd-windows-miner
+
+User request summary
+- Prepare app for beta executable release.
+- Remove internal marker text from executable UI:
+  "BUILD MARKER 2026-04-03 / protocol-log / pool-host-fix / immediate-refresh"
+  and helper line:
+  "Daca vezi exact acest text, rulezi build-ul nou cu protocol log si fixul pentru pools/all-miners."
+- Replace top placeholder texts:
+  "Phase 1 running"
+  "Desktop control surface"
+  "Baza de lucru este pornibila si pregatita pentru urmatorul pas: auth, job fetch, share submit si mining loop."
+  with:
+  "WEBDOLLAR Windows Miner"
+- Hide temporary row/zone related to "Pool Legacy poll" visibility.
+- In Local config, wallet address should display $ instead of /.
+- Build installation kit and create usage documentation.
+- Save progress/checkpoints/discussion and prepare GitHub upload flow.
+
+Execution summary
+- Updated src/App.vue:
+  - Removed build marker card and helper line from visible UI.
+  - Updated hero/title section to "WEBDOLLAR Windows Miner".
+  - Hid diagnostics panel previously showing pool visibility/activity timeline.
+  - Added computed input bridge for Local config wallet field:
+    display uses $, persistence uses /.
+- Build validated successfully with npm run build.
+- Installer generated successfully with npm run dist.
+- Artifacts confirmed:
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe
+  - dist/win-unpacked/WebDollar Windows Miner.exe
+- Added docs:
+  - BETA_LAUNCH_PLAN_CHECKLIST.md
+  - USER_GUIDE_BETA_RO.md
+- Appended WORKLOG checkpoint 034.
+
+Pending release actions
+- Review git diff.
+- Commit and push to GitHub.
+- Optional beta tag creation.

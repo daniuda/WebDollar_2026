@@ -18,7 +18,6 @@ import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob,
 
 const WEBD_UNITS = 10_000
 const POOL_MIN_PAYOUT_WEBD = 20
-const BUILD_MARKER = 'BUILD MARKER 2026-04-03 / protocol-log / pool-host-fix / immediate-refresh'
 
 function isLegacyPoolUrl(poolUrl: string): boolean {
   return poolUrl.trim().startsWith('pool/')
@@ -177,8 +176,8 @@ const payoutThresholdInfo = computed(() => {
 })
 
 const miningHashrateDisplay = computed(() => {
-  if (miningRunning.value && miningHashrate.value <= 0) return 1
-  return miningHashrate.value
+  if (!miningRunning.value) return 0
+  return Math.max(1, miningHashrate.value)
 })
 
 function pushLog(message: string) {
@@ -241,6 +240,13 @@ const walletSummary = computed(() => {
   }
 })
 
+const localConfigWalletAddress = computed({
+  get: () => config.walletAddress.replace(/\//g, '$'),
+  set: (value: string) => {
+    config.walletAddress = value.replace(/\$/g, '/')
+  },
+})
+
 async function hydrate() {
   loading.value = true
   error.value = ''
@@ -265,6 +271,9 @@ async function hydrate() {
     if (config.walletAddress) {
       if (isLegacyPoolUrl(config.poolUrl) && !currentWallet.value) {
         pushLog('Legacy PoS auto-connect skipped: wallet deblocat/importat necesar inainte de auth.')
+        if (!config.autoStart) {
+          error.value = 'Deblocheaza wallet-ul salvat pentru a te conecta la pool.'
+        }
         return
       }
 
@@ -396,7 +405,20 @@ async function unlockWallet() {
     const wallet = await importDesktopWalletRaw(secretHex)
     applyWallet(wallet, 'encrypted local storage')
     walletUnlockPassword.value = ''
-    success.value = 'Wallet local decriptat cu succes.'
+    
+    if (config.autoStart && !miningRunning.value) {
+      success.value = 'Wallet deblocat. Minatul porneste automat...'
+      await runWorkerAuth()
+      if (authResult.value?.token) {
+        await loadWorkerJob()
+        void startMiningLoop()
+      } else {
+        error.value = 'Auth failed. Verifica conexiunea la pool.'
+      }
+    } else {
+      success.value = 'Wallet local decriptat cu succes.'
+    }
+    error.value = ''
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Wallet unlock failed.'
   }
@@ -705,11 +727,7 @@ onMounted(() => {
     <main class="content">
       <header class="hero">
         <div>
-          <p class="eyebrow">Phase 1 running</p>
-          <h2>Desktop control surface</h2>
-          <p class="hero-copy">
-            Baza de lucru este pornibila si pregatita pentru urmatorul pas: auth, job fetch, share submit si mining loop.
-          </p>
+          <h2>WEBDOLLAR Windows Miner</h2>
         </div>
 
         <div class="hero-actions">
@@ -722,12 +740,6 @@ onMounted(() => {
       <p v-if="error" class="banner error-banner">{{ error }}</p>
       <p v-if="success" class="banner success-banner">{{ success }}</p>
       <p v-if="watchdogWarning" class="banner error-banner">{{ watchdogWarning }}</p>
-
-      <section v-if="showTechDetails" class="build-marker-card">
-        <p class="build-marker-label">Marker versiune rulata</p>
-        <p class="build-marker-value">{{ BUILD_MARKER }}</p>
-        <p class="panel-meta">Daca vezi exact acest text, rulezi build-ul nou cu protocol log si fixul pentru pools/all-miners.</p>
-      </section>
 
       <section class="metrics-grid">
         <article v-for="card in summaryCards" :key="card.label" class="metric-card">
@@ -753,7 +765,7 @@ onMounted(() => {
 
           <label class="field">
             <span>Wallet address</span>
-            <input v-model="config.walletAddress" class="field-input" type="text" placeholder="WEBD$..." />
+            <input v-model="localConfigWalletAddress" class="field-input" type="text" placeholder="WEBD$..." />
           </label>
 
           <label class="toggle-field">
@@ -762,33 +774,6 @@ onMounted(() => {
           </label>
         </article>
 
-        <article v-if="showTechDetails" class="panel diagnostics-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Diagnostics</p>
-              <h3>Pool visibility</h3>
-            </div>
-            <p class="panel-meta">Last refresh: {{ lastUpdated || '-' }}</p>
-          </div>
-
-          <div class="diagnostics-grid">
-            <div>
-              <p class="metric-label">Key required</p>
-              <p class="metric-value small-value">{{ stats?.keyRequired ? 'Yes' : 'No' }}</p>
-            </div>
-            <div>
-              <p class="metric-label">Worker API</p>
-              <p class="metric-value small-value">{{ config.poolUrl }}</p>
-            </div>
-          </div>
-
-          <div class="timeline">
-            <p class="metric-label">Activity log</p>
-            <ul class="timeline-list">
-              <li v-for="(entry, index) in activityLog" :key="`${index}-${entry}`">{{ entry }}</li>
-            </ul>
-          </div>
-        </article>
       </section>
 
       <section class="layout-grid wallet-grid">
@@ -931,100 +916,6 @@ onMounted(() => {
           </template>
         </article>
 
-        <article class="panel diagnostics-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Worker session</p>
-              <h3>Mining diagnostics</h3>
-            </div>
-            <p class="panel-meta">Status-ul workerului si al ultimelor share-uri.</p>
-          </div>
-
-          <div class="diagnostics-grid encrypted-grid">
-            <div>
-              <p class="metric-label">Wallet pending (istoric pool)</p>
-              <p class="metric-value small-value">{{ walletValueCards.pending }} WEBD</p>
-            </div>
-            <div>
-              <p class="metric-label">Wallet confirmed (istoric pool)</p>
-              <p class="metric-value small-value">{{ walletValueCards.confirmed }} WEBD</p>
-            </div>
-            <div>
-              <p class="metric-label">Wallet total portofel (balance pool)</p>
-              <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
-            </div>
-          </div>
-
-          <div class="diagnostics-grid encrypted-grid">
-            <div>
-              <p class="metric-label">Pool pending (reward_total)</p>
-              <p class="metric-value small-value">{{ poolPayoutCards.pending }} WEBD</p>
-            </div>
-            <div>
-              <p class="metric-label">Pool confirmed (reward_confirmed)</p>
-              <p class="metric-value small-value">{{ poolPayoutCards.confirmed }} WEBD</p>
-            </div>
-            <div>
-              <p class="metric-label">Pool sent (reward_sent)</p>
-              <p class="metric-value small-value">{{ poolPayoutCards.sent }} WEBD</p>
-            </div>
-          </div>
-          <p class="panel-meta">
-            reward_total = pending in pool, reward_confirmed = confirmat pentru payout, reward_sent = deja platit.
-          </p>
-          <div class="diagnostics-grid encrypted-grid">
-            <div>
-              <p class="metric-label">Prag payout pool</p>
-              <p class="metric-value small-value">{{ payoutThresholdInfo.thresholdWebd.toLocaleString('en-US', { maximumFractionDigits: 3 }) }} WEBD</p>
-            </div>
-            <div>
-              <p class="metric-label">Progres payout</p>
-              <p class="metric-value small-value">{{ payoutThresholdInfo.progressPercent.toFixed(1) }}%</p>
-            </div>
-            <div>
-              <p class="metric-label">Status payout</p>
-              <p class="metric-value small-value">{{ payoutThresholdInfo.statusLabel }}</p>
-            </div>
-          </div>
-          <p v-if="showTechDetails" class="panel-meta">Sursa payout: {{ poolPayoutCards.source }}</p>
-
-          <template v-if="showTechDetails">
-            <div class="diagnostics-grid encrypted-grid">
-              <div>
-                <p class="metric-label">Last submit result</p>
-                <p class="metric-value small-value">{{ lastShareResult?.result || '-' }}</p>
-              </div>
-              <div>
-                <p class="metric-label">Last submit message</p>
-                <p class="metric-value small-value">{{ lastShareResult?.message || '-' }}</p>
-              </div>
-              <div>
-                <p class="metric-label">Worker ID</p>
-                <p class="metric-value small-value">{{ authResult?.workerId || '-' }}</p>
-              </div>
-              <div>
-                <p class="metric-label">Pool name</p>
-                <p class="metric-value small-value">{{ authResult?.poolName || '-' }}</p>
-              </div>
-              <div>
-                <p class="metric-label">Worker accepted</p>
-                <p class="metric-value small-value">{{ workerStats?.sharesAccepted ?? '-' }}</p>
-              </div>
-              <div>
-                <p class="metric-label">Worker rejected/stale</p>
-                <p class="metric-value small-value">{{ workerStats ? `${workerStats.sharesRejected} / ${workerStats.sharesStale}` : '-' }}</p>
-              </div>
-            </div>
-
-            <div class="timeline">
-              <p class="metric-label">Protocol log</p>
-              <ul class="timeline-list">
-                <li v-for="(entry, index) in (workerStats?.protocolEvents || [])" :key="`${index}-${entry}`">{{ entry }}</li>
-              </ul>
-              <p v-if="!(workerStats?.protocolEvents?.length)" class="panel-meta">Astept primul refresh de protocol...</p>
-            </div>
-          </template>
-        </article>
       </section>
     </main>
   </div>
