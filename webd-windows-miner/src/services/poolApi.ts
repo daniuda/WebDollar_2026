@@ -49,6 +49,10 @@ function extractMinerList(payload: any): any[] {
   if (Array.isArray(payload?.miners)) return payload.miners
   if (Array.isArray(payload?.data?.miners)) return payload.data.miners
   if (Array.isArray(payload?.data)) return payload.data
+  // Sometimes pool returns single miner object directly (e.g., /pools/miners endpoint with address header)
+  if (payload && typeof payload === 'object' && (payload.address || payload.minerAddress || payload.walletAddress)) {
+    return [payload]
+  }
   return []
 }
 
@@ -144,6 +148,7 @@ export async function fetchPoolAddressReward(baseUrl: string, walletAddress: str
   const candidates = [resolvePoolApiBase(baseUrl)]
   const normalizedTarget = normalizeAddress(address)
   // Prefer the pool miners endpoint for wallet totals (e.g. totalPOSBalance).
+  // Some pools may return single miner directly, others return lists.
   const endpointPaths = ['/pools/miners', '/pools/all-miners']
   let lastError: unknown = null
 
