@@ -262,3 +262,8 @@ Checkpoint 035
 - Exposed `wallet:save-legacy-file` through preload and renderer desktop API wrapper.
 - Added `Save .webd file` button in wallet actions, enabled when a wallet is loaded.
 
+Checkpoint 036
+- Added periodic wallet value refresh every 20 seconds, independent of mining loop.
+- Added automatic wallet reward refresh when pool URL or wallet address changes in config.
+- Goal: incoming WEBD updates appear in UI without manual `Refresh pool`, and with minimal delay.
+

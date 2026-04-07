@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   decryptDesktopSecret,
   encryptDesktopSecret,
@@ -69,6 +69,7 @@ const watchdogWarning = ref('')
 const lastJobReceivedAt = ref(0)
 let workerStatsTimer: ReturnType<typeof setInterval> | null = null
 let watchdogTimer: ReturnType<typeof setInterval> | null = null
+let poolRewardTimer: ReturnType<typeof setInterval> | null = null
 let miningStopRequested = false
 let hashrateTimer: ReturnType<typeof setInterval> | null = null
 const activityLog = ref<string[]>([
@@ -223,6 +224,24 @@ function stopWatchdogTimer() {
   if (watchdogTimer) {
     clearInterval(watchdogTimer)
     watchdogTimer = null
+  }
+}
+
+function startPoolRewardTimer() {
+  stopPoolRewardTimer()
+  poolRewardTimer = setInterval(() => {
+    if (!config.walletAddress.trim()) {
+      poolAddressReward.value = null
+      return
+    }
+    void refreshPoolAddressReward()
+  }, 20_000)
+}
+
+function stopPoolRewardTimer() {
+  if (poolRewardTimer) {
+    clearInterval(poolRewardTimer)
+    poolRewardTimer = null
   }
 }
 
@@ -739,11 +758,24 @@ onBeforeUnmount(() => {
   stopHashrateMeter()
   stopWorkerStatsTimer()
   stopWatchdogTimer()
+  stopPoolRewardTimer()
 })
 
 onMounted(() => {
+  startPoolRewardTimer()
   void hydrate()
 })
+
+watch(
+  () => `${config.poolUrl}|${config.walletAddress}`,
+  () => {
+    if (!config.walletAddress.trim()) {
+      poolAddressReward.value = null
+      return
+    }
+    void refreshPoolAddressReward()
+  },
+)
 </script>
 
 <template>
