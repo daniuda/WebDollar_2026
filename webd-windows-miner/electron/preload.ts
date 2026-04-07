@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   importWalletRaw: (raw: string) => ipcRenderer.invoke('wallet:import-raw', raw) as Promise<GeneratedWallet>,
   selectWalletFileRaw: () => ipcRenderer.invoke('wallet:select-file-raw') as Promise<string | null>,
   exportLegacyWallet: (secretHex: string) => ipcRenderer.invoke('wallet:export-legacy', secretHex) as Promise<string>,
+  saveLegacyWalletFile: (secretHex: string) => ipcRenderer.invoke('wallet:save-legacy-file', secretHex) as Promise<string | null>,
   encryptSecret: (secretHex: string, passphrase: string) => ipcRenderer.invoke('wallet:encrypt-secret', secretHex, passphrase) as Promise<string>,
   decryptSecret: (envelopeJson: string, passphrase: string) => ipcRenderer.invoke('wallet:decrypt-secret', envelopeJson, passphrase) as Promise<string>,
   legacyConnect: (poolAddress: string, walletAddress: string, wallet?: GeneratedWallet) => ipcRenderer.invoke('legacy:connect', poolAddress, walletAddress, wallet) as Promise<LegacyAuthResult>,

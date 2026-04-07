@@ -27,6 +27,7 @@ interface Window {
     importWalletRaw: (raw: string) => Promise<GeneratedWallet>
     selectWalletFileRaw: () => Promise<string | null>
     exportLegacyWallet: (secretHex: string) => Promise<string>
+    saveLegacyWalletFile: (secretHex: string) => Promise<string | null>
     encryptSecret: (secretHex: string, passphrase: string) => Promise<string>
     decryptSecret: (envelopeJson: string, passphrase: string) => Promise<string>
     legacyConnect: (poolAddress: string, walletAddress: string, wallet?: GeneratedWallet) => Promise<{ token: string; workerId: string; poolName: string; poolFee: number }>

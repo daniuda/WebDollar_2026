@@ -1,0 +1,27 @@
+Discussion log - 2026-04-07
+Project: webd-windows-miner
+
+User request summary
+- Continue from checkpoint 035.
+- Generate a new installer that includes the new `.webd` save feature.
+- Commit and push the checkpoint 035 changes.
+
+Execution summary
+- Confirmed feature implementation for saving generated/imported wallet to `.webd` file.
+- Generated fresh installer with `npm run dist`.
+- Confirmed artifacts:
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe
+  - dist/win-unpacked/WebDollar Windows Miner.exe
+- Prepared checkpoint 035 commit scope:
+  - electron/main.ts
+  - electron/preload.ts
+  - src/services/desktopApi.ts
+  - src/vite-env.d.ts
+  - src/App.vue
+  - WORKLOG.txt
+  - package-lock.json
+- package-lock version remained aligned with app version 0.0.3.
+
+Pending after this log
+- Create git commit for checkpoint 035.
+- Push to origin/master.

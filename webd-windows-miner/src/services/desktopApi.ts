@@ -89,6 +89,14 @@ export function exportDesktopLegacyWallet(secretHex: string): Promise<string> {
   return api.exportLegacyWallet(secretHex)
 }
 
+export function saveDesktopLegacyWalletFile(secretHex: string): Promise<string | null> {
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Wallet file export requires Electron runtime.'))
+  }
+  return api.saveLegacyWalletFile(secretHex)
+}
+
 export function encryptDesktopSecret(secretHex: string, passphrase: string): Promise<string> {
   const api = getDesktopApi()
   if (!api) {

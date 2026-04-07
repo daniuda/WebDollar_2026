@@ -66,6 +66,25 @@ async function selectWalletFileRaw(): Promise<string | null> {
   return readFile(result.filePaths[0], 'utf8')
 }
 
+async function saveLegacyWalletFile(secretHex: string): Promise<string | null> {
+  const legacyWallet = exportLegacyWallet(secretHex)
+  const result = await dialog.showSaveDialog({
+    title: 'Save .webd wallet file',
+    defaultPath: 'wallet.webd',
+    filters: [
+      { name: 'WebDollar Wallet', extensions: ['webd'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  })
+
+  if (result.canceled || !result.filePath) {
+    return null
+  }
+
+  await writeFile(result.filePath, legacyWallet, 'utf8')
+  return result.filePath
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -198,6 +217,7 @@ app.whenReady().then(() => {
   ipcMain.handle('wallet:import-raw', async (_event: IpcMainInvokeEvent, raw: string) => importWalletRaw(raw))
   ipcMain.handle('wallet:select-file-raw', async () => selectWalletFileRaw())
   ipcMain.handle('wallet:export-legacy', async (_event: IpcMainInvokeEvent, secretHex: string) => exportLegacyWallet(secretHex))
+  ipcMain.handle('wallet:save-legacy-file', async (_event: IpcMainInvokeEvent, secretHex: string) => saveLegacyWalletFile(secretHex))
   ipcMain.handle('wallet:encrypt-secret', async (_event: IpcMainInvokeEvent, secretHex: string, passphrase: string) => encryptSecret(secretHex, passphrase))
   ipcMain.handle('wallet:decrypt-secret', async (_event: IpcMainInvokeEvent, envelopeJson: string, passphrase: string) => decryptSecret(envelopeJson, passphrase))
 

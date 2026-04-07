@@ -256,3 +256,9 @@ Checkpoint 034 (Beta prep: cleanup + installer + docs)
 - Added beta release checklist and user guide documents for publishing and support handoff.
 - Saved discussion snapshot for session continuity.
 
+Checkpoint 035
+- Added direct `.webd` save flow for generated/imported wallet from the desktop UI.
+- Implemented Electron save dialog for `.webd` export and file write on user-selected path.
+- Exposed `wallet:save-legacy-file` through preload and renderer desktop API wrapper.
+- Added `Save .webd file` button in wallet actions, enabled when a wallet is loaded.
+

@@ -7,6 +7,7 @@ import {
   getDesktopMeta,
   importDesktopWalletRaw,
   loadDesktopConfig,
+  saveDesktopLegacyWalletFile,
   selectDesktopWalletFileRaw,
   saveDesktopConfig,
 } from './services/desktopApi'
@@ -364,6 +365,29 @@ async function importWalletFromFile() {
     success.value = 'Wallet .webd importat cu succes.'
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Wallet .webd import failed.'
+  }
+}
+
+async function saveWalletToWebdFile() {
+  if (!currentWallet.value) {
+    error.value = 'Nu exista wallet incarcat pentru export.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    const savedPath = await saveDesktopLegacyWalletFile(currentWallet.value.secretHex)
+    if (!savedPath) {
+      success.value = 'Salvarea wallet-ului a fost anulata.'
+      return
+    }
+
+    success.value = `Wallet salvat in fisier .webd: ${savedPath}`
+    pushLog(`Wallet exportat in fisier .webd: ${savedPath}`)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Wallet .webd export failed.'
   }
 }
 
@@ -788,6 +812,7 @@ onMounted(() => {
           <div class="hero-actions wallet-actions">
             <button class="primary-btn" @click="generateWallet">Generate wallet</button>
             <button class="ghost-btn" @click="importWalletFromFile">Import .webd file</button>
+            <button class="ghost-btn" :disabled="!currentWallet" @click="saveWalletToWebdFile">Save .webd file</button>
           </div>
 
           <div class="wallet-summary-grid">
