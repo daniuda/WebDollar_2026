@@ -595,4 +595,148 @@ export class LegacyPoolBridge {
       keyRequired: false,
     }
   }
+
+  broadcastTransaction(payload: Record<string, unknown>): { accepted: boolean; message: string } {
+    console.log('[LegacyPoolBridge.broadcastTransaction] starting broadcast', { connected: this.connected, hasSocket: !!this.socket })
+    
+    if (!this.connected || !this.socket) {
+      const msg = 'Socket legacy nu este conectat pentru broadcast tranzactie'
+      console.log('[LegacyPoolBridge.broadcastTransaction] FAILED:', msg, { connected: this.connected, hasSocket: !!this.socket })
+      return { accepted: false, message: msg }
+    }
+
+    this.pushProtocolEvent('sent payment transaction')
+    console.log('[LegacyPoolBridge.broadcastTransaction] emitting new-transaction')
+    this.socket.emit('new-transaction', payload)
+    console.log('[LegacyPoolBridge.broadcastTransaction] emitting transactions/new-pending-transaction')
+    this.socket.emit('transactions/new-pending-transaction', payload)
+
+    const msg = 'Tranzactie trimisa pe socket legacy'
+    console.log('[LegacyPoolBridge.broadcastTransaction] SUCCESS')
+    return { accepted: true, message: msg }
+  }
+}
+
+/**
+ * Socket broadcaster pentru tranzactii via nod WebDollar (nu pool legacy).
+ * Conecteaza la nod direct si emite transactions/new-pending-transaction.
+ */
+export class NodeTxBroadcaster {
+  private socket: any = null
+  private connected = false
+  private helloReceived = false
+
+  async connectToNode(nodeUrl: string): Promise<void> {
+    console.log('[NodeTxBroadcaster.connectToNode] connecting to', nodeUrl)
+    
+    if (this.socket) {
+      try {
+        this.socket.disconnect()
+      } catch {
+        // ignore
+      }
+    }
+
+    this.connected = false
+    this.helloReceived = false
+
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const settle = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        clearTimeout(connectTimeout)
+        fn()
+      }
+
+      const connectTimeout = setTimeout(() => {
+        settle(() => {
+          const reason = this.connected
+            ? 'HelloNode nu a fost primit dupa 10s (nodul poate a respins versiunea sau tipul nostru de nod)'
+            : 'Conexiune la transport nu a reusit dupa 10s'
+          console.log('[NodeTxBroadcaster] TIMEOUT:', reason, nodeUrl)
+          try { this.socket?.disconnect() } catch { /* ignore */ }
+          reject(new Error(`Node connection timeout (10s) to ${nodeUrl}: ${reason}`))
+        })
+      }, 10000)
+
+      try {
+        this.socket = socketIo(nodeUrl, {
+          reconnection: false,
+          timeout: 5000,
+          transports: ['websocket'],
+          query: buildQuery(),
+        })
+
+        this.socket.on('connect', () => {
+          this.connected = true
+          console.log('[NodeTxBroadcaster] connected to node transport, waiting for HelloNode...', nodeUrl)
+        })
+
+        this.socket.on('HelloNode', (data: any) => {
+          console.log('[NodeTxBroadcaster] HelloNode received, node handshake complete', nodeUrl, JSON.stringify(data || '{}').slice(0, 100))
+          this.connected = true
+          this.helloReceived = true
+          settle(() => resolve())
+        })
+
+        this.socket.on('connect_error', (err: any) => {
+          const msg = err?.message || err?.description || String(err)
+          console.log('[NodeTxBroadcaster] connect_error:', msg, 'nod:', nodeUrl)
+          settle(() => reject(new Error(`connect_error la ${nodeUrl}: ${msg}`)))
+        })
+
+        this.socket.on('error', (err: any) => {
+          console.log('[NodeTxBroadcaster] error event:', err?.message || err, 'nod:', nodeUrl)
+        })
+
+        this.socket.on('disconnect', (reason: string) => {
+          this.connected = false
+          if (reason === 'io server disconnect') {
+            console.log('[NodeTxBroadcaster] RESPINS DE NOD (io server disconnect) - probabil versiune/helloNode incorecta:', nodeUrl)
+            settle(() => reject(new Error(`Nodul a respins conexiunea (${reason}) la ${nodeUrl} - verificati versiunea sau tipul nodului`)))
+          } else {
+            console.log('[NodeTxBroadcaster] disconnected from node, reason:', reason, nodeUrl)
+          }
+        })
+      } catch (err) {
+        clearTimeout(connectTimeout)
+        console.log('[NodeTxBroadcaster.connectToNode] socket init failed:', err)
+        reject(err)
+      }
+    })
+  }
+
+  async broadcastTransaction(buffer: Buffer): Promise<{ accepted: boolean; message: string }> {
+    console.log('[NodeTxBroadcaster.broadcastTransaction] starting', { connected: this.connected, helloReceived: this.helloReceived })
+    
+    if (!this.connected || !this.socket || !this.helloReceived) {
+      const msg = 'Nu sunt conectat la nod WebDollar pentru broadcast'
+      console.log('[NodeTxBroadcaster.broadcastTransaction] FAILED:', msg)
+      return { accepted: false, message: msg }
+    }
+
+    try {
+      console.log('[NodeTxBroadcaster.broadcastTransaction] emitting transactions/new-pending-transaction')
+      this.socket.emit('transactions/new-pending-transaction', { buffer })
+      console.log('[NodeTxBroadcaster.broadcastTransaction] SUCCESS')
+      return { accepted: true, message: 'Tranzactie trimisa la nod via socket' }
+    } catch (err) {
+      const msg = `Error emit: ${err instanceof Error ? err.message : String(err)}`
+      console.log('[NodeTxBroadcaster.broadcastTransaction] FAILED:', msg)
+      return { accepted: false, message: msg }
+    }
+  }
+
+  disconnect(): void {
+    if (this.socket) {
+      try {
+        this.socket.disconnect()
+      } catch {
+        // ignore
+      }
+    }
+    this.connected = false
+    this.helloReceived = false
+  }
 }

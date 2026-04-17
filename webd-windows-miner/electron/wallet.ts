@@ -66,15 +66,15 @@ export function importWalletRaw(raw: string): GeneratedWallet {
 
 export function exportLegacyWallet(secretHex: string): string {
   const wallet = fromSecretHex(secretHex)
-  const legacyWallet: LegacyWalletFile = {
+  // Respectă ordinea cheilor ca în model: version, address, publicKey, privateKey
+  const legacyWallet = {
     version: '0.1',
     address: wallet.address,
-    privateKey: legacyPrivateKeyHexFromSecretHex(wallet.secretHex),
     publicKey: wallet.publicKeyHex,
-    unencodedAddress: wallet.unencodedAddressHex,
+    privateKey: legacyPrivateKeyHexFromSecretHex(wallet.secretHex)
   }
-
-  return JSON.stringify(legacyWallet, null, 2)
+  // Fără spații, fără newline, ordinea cheilor fixă
+  return JSON.stringify(legacyWallet, ["version", "address", "publicKey", "privateKey"], 0).replace(/\n/g, '')
 }
 
 export function encryptSecret(secretHex: string, passphrase: string): string {

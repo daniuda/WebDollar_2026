@@ -267,3 +267,23 @@ Checkpoint 036
 - Added automatic wallet reward refresh when pool URL or wallet address changes in config.
 - Goal: incoming WEBD updates appear in UI without manual `Refresh pool`, and with minimal delay.
 
+Checkpoint 037 (Payment v0.1.0 - M1 infrastructure)
+- Added `electron/txBuilder.ts` to build and sign a WebDollar payment transaction from unlocked wallet data (version/nonce/timelock/from/to/fee + txId).
+- Added `electron/txBroadcast.ts` with broadcast strategy: legacy socket emit first for `pool/...`, then HTTP fallback (`/chain/transactions/new`, fallback JSON-RPC `sendRawTransaction`).
+- Extended `electron/legacyPool.ts` with `broadcastTransaction()` helper for payment socket emission.
+- Added IPC handler in `electron/main.ts`: `send-transaction`.
+- Exposed renderer bridge in `electron/preload.ts`: `desktopApi.sendTransaction()`.
+- Added renderer-side payment wrappers/types:
+	- `src/services/paymentApi.ts`
+	- `src/services/desktopApi.ts` extended
+	- `src/types/miner.ts` payment models (`WebdPaymentRequest`, `WebdPaymentResult`)
+	- `src/vite-env.d.ts` desktop API type extensions
+- Fixed TypeScript naming conflict with DOM `PaymentRequest` by renaming app-specific types to `WebdPaymentRequest`/`WebdPaymentResult`.
+- Build verification passed (`npm run build`: app typecheck + node typecheck + renderer build + electron build).
+
+Checkpoint 038 (Installer black-screen fix)
+- Root cause identified for black screen after install: renderer assets were emitted as absolute paths (`/assets/...`), which fail under `file://` in packaged Electron.
+- Fixed Vite config by setting `base: './'` in `vite.config.ts` so `dist/index.html` references relative asset paths.
+- Verified after rebuild that `dist/index.html` now loads `./assets/...` correctly.
+- Full build verification passed again (`npm run build`).
+

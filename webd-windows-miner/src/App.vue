@@ -15,10 +15,26 @@ import { fetchPoolAddressReward, fetchPoolStats } from './services/poolApi'
 import { mineRange } from './services/hashEngine'
 import { authWorker, fetchWorkerJob, fetchWorkerStats, submitWorkerShare } from './services/workerApi'
 import { getDefaultPoolAddress, resolvePoolApiBase } from './services/poolAddress'
+import { sendPaymentTransaction } from './services/paymentApi'
+import { explorerTxUrl, pollTxConfirmed, type TxNetworkStatus } from './services/txStatusApi'
 import type { AppMeta, AuthResult, DesktopAppConfig, GeneratedWallet, MiningJob, PoolAddressReward, PoolStats, ShareResult, WorkerStats } from './types/miner'
 
 const WEBD_UNITS = 10_000
 const POOL_MIN_PAYOUT_WEBD = 20
+const MIN_PAYMENT_FEE_WEBD = 10
+const MIN_PAYMENT_AMOUNT_WEBD = 10
+
+type UiLanguage = 'ro' | 'en'
+const uiLanguage = ref<UiLanguage>('ro')
+
+function t(ro: string, en: string): string {
+  return uiLanguage.value === 'ro' ? ro : en
+}
+
+function toggleLanguage() {
+  uiLanguage.value = uiLanguage.value === 'ro' ? 'en' : 'ro'
+  window.localStorage.setItem('webd_ui_language', uiLanguage.value)
+}
 
 function isLegacyPoolUrl(poolUrl: string): boolean {
   return poolUrl.trim().startsWith('pool/')
@@ -30,6 +46,7 @@ function unitsToWebd(units: number): number {
 
 const config = reactive<DesktopAppConfig>({
   poolUrl: getDefaultPoolAddress(),
+  paymentUrl: '',
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',
@@ -65,6 +82,17 @@ const hashCounter = ref(0)
 const showTechDetails = ref(false)
 const lastLoggedJobKey = ref('')
 const lastLoggedProtocolEntry = ref('')
+const paymentRecipient = ref('')
+const paymentAmount = ref(1)
+const paymentSending = ref(false)
+const paymentResult = ref<{ ok: boolean; message: string; txId?: string } | null>(null)
+const paymentTxConfirmed = ref(false)
+const paymentTxPending = ref(false)
+const paymentTxNetworkStatus = ref<TxNetworkStatus>('unknown')
+const paymentTxPollingFinished = ref(false)
+const paymentTxPollAttempts = ref(0)
+const PAYMENT_TX_POLL_MAX_ATTEMPTS = 60
+let stopTxPoll: (() => void) | null = null
 const watchdogWarning = ref('')
 const lastJobReceivedAt = ref(0)
 let workerStatsTimer: ReturnType<typeof setInterval> | null = null
@@ -157,7 +185,7 @@ const payoutThresholdInfo = computed(() => {
       confirmedWebd: 0,
       remainingWebd: POOL_MIN_PAYOUT_WEBD,
       progressPercent: 0,
-      statusLabel: 'Astept date payout din pool...',
+      statusLabel: t('Astept date payout din pool...', 'Waiting for payout data from pool...'),
     }
   }
 
@@ -165,8 +193,11 @@ const payoutThresholdInfo = computed(() => {
   const remainingWebd = Math.max(0, POOL_MIN_PAYOUT_WEBD - confirmedWebd)
   const progressPercent = Math.max(0, Math.min(100, (confirmedWebd / POOL_MIN_PAYOUT_WEBD) * 100))
   const statusLabel = remainingWebd <= 0
-    ? 'Prag payout atins.'
-    : `Mai sunt ~${remainingWebd.toLocaleString('en-US', { maximumFractionDigits: 6 })} WEBD pana la prag.`
+    ? t('Prag payout atins.', 'Payout threshold reached.')
+    : t(
+      `Mai sunt ~${remainingWebd.toLocaleString('en-US', { maximumFractionDigits: 6 })} WEBD pana la prag.`,
+      `~${remainingWebd.toLocaleString('en-US', { maximumFractionDigits: 6 })} WEBD remaining to threshold.`,
+    )
 
   return {
     thresholdWebd: POOL_MIN_PAYOUT_WEBD,
@@ -180,6 +211,33 @@ const payoutThresholdInfo = computed(() => {
 const miningHashrateDisplay = computed(() => {
   if (!miningRunning.value) return 0
   return Math.max(1, miningHashrate.value)
+})
+
+const paymentStageItems = computed<Array<{ key: 'broadcasted' | 'propagated' | 'confirmed'; label: string; status: 'done' | 'active' | 'pending' }>>(() => {
+  if (!paymentResult.value?.ok || !paymentResult.value.txId) {
+    return []
+  }
+
+  const currentStage = paymentTxConfirmed.value
+    ? 'confirmed'
+    : paymentTxNetworkStatus.value === 'propagated'
+      ? 'propagated'
+      : 'broadcasted'
+
+  const stageOrder: Array<'broadcasted' | 'propagated' | 'confirmed'> = ['broadcasted', 'propagated', 'confirmed']
+  const stageLabels: Record<'broadcasted' | 'propagated' | 'confirmed', string> = {
+    broadcasted: t('Trimisa la nod', 'Sent to node'),
+    propagated: t('In pending / mempool', 'In pending / mempool'),
+    confirmed: t('Confirmata in block', 'Confirmed in block'),
+  }
+
+  const activeIndex = stageOrder.indexOf(currentStage)
+
+  return stageOrder.map((stage, index) => ({
+    key: stage,
+    label: stageLabels[stage],
+    status: index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'pending',
+  }))
 })
 
 function pushLog(message: string) {
@@ -211,7 +269,10 @@ function startWatchdogTimer() {
 
     if (!lastJobReceivedAt.value || Date.now() - lastJobReceivedAt.value > 45_000) {
       if (!watchdogWarning.value) {
-        watchdogWarning.value = 'Nu au mai venit joburi noi in ultimele 45 secunde.'
+        watchdogWarning.value = t(
+          'Nu au mai venit joburi noi in ultimele 45 secunde.',
+          'No new jobs arrived in the last 45 seconds.',
+        )
         pushLog(watchdogWarning.value)
       }
     } else {
@@ -753,15 +814,118 @@ function stopMiningLoop() {
   pushLog('Stop requested for mining loop.')
 }
 
+async function sendPayment() {
+  if (!currentWallet.value) {
+    paymentResult.value = { ok: false, message: 'Wallet neblocat. Deblocheza sau importa wallet inainte.' }
+    return
+  }
+  if (!paymentRecipient.value.trim()) {
+    paymentResult.value = { ok: false, message: 'Adresa destinatar lipsa.' }
+    return
+  }
+  if (paymentAmount.value < MIN_PAYMENT_AMOUNT_WEBD) {
+    paymentResult.value = { ok: false, message: `Suma minima este ${MIN_PAYMENT_AMOUNT_WEBD} WEBD (limita protocolului).` }
+    return
+  }
+
+  const recipient = paymentRecipient.value.trim()
+  const confirmedByUser = window.confirm(
+    t(
+      `Esti sigur ca vrei sa trimiti suma de ${paymentAmount.value} WEBD catre adresa ${recipient}?\n\nAlege OK pentru DA sau Cancel pentru NU.`,
+      `Are you sure you want to send ${paymentAmount.value} WEBD to address ${recipient}?\n\nChoose OK for YES or Cancel for NO.`,
+    ),
+  )
+
+  if (!confirmedByUser) {
+    paymentResult.value = { ok: false, message: t('Transfer anulat de utilizator.', 'Transfer canceled by user.') }
+    return
+  }
+
+  paymentSending.value = true
+  paymentResult.value = null
+  paymentTxConfirmed.value = false
+  paymentTxPending.value = false
+  paymentTxNetworkStatus.value = 'unknown'
+  paymentTxPollingFinished.value = false
+  paymentTxPollAttempts.value = 0
+
+  try {
+    const wallet = getWalletForAuth()!
+    const result = await sendPaymentTransaction({
+      poolUrl: config.poolUrl,
+      paymentUrl: config.paymentUrl,
+      recipientAddress: recipient.replace(/\$/g, '/'),
+      amountWebd: paymentAmount.value,
+      feeWebd: MIN_PAYMENT_FEE_WEBD,
+      wallet,
+    })
+    paymentResult.value = { ok: result.ok, message: result.message, txId: result.txId }
+    if (result.ok) {
+      pushLog(`Payment sent: ${paymentAmount.value} WEBD → ${paymentRecipient.value} (tx ${result.txId})`)
+      if (result.txId) {
+        paymentTxConfirmed.value = false
+        paymentTxPending.value = true
+        paymentTxNetworkStatus.value = 'unknown'
+        if (stopTxPoll) stopTxPoll()
+        stopTxPoll = pollTxConfirmed(config.poolUrl, result.txId, (status, done, attempts) => {
+          paymentTxPollAttempts.value = attempts ?? paymentTxPollAttempts.value
+          const previousStatus = paymentTxNetworkStatus.value
+          paymentTxNetworkStatus.value = status
+
+          if (done) {
+            paymentTxPollingFinished.value = true
+          }
+
+          if (status === 'confirmed') {
+            paymentTxPending.value = false
+            paymentTxConfirmed.value = true
+            if (previousStatus !== 'confirmed') {
+              pushLog(`Tranzactie confirmata pe blockchain: ${result.txId}`)
+            }
+            return
+          }
+
+          paymentTxPending.value = true
+          if (status === 'propagated' && previousStatus !== 'propagated') {
+            pushLog(`Tranzactie propagata in pending queue: ${result.txId}`)
+          }
+
+          if (done && status === 'unknown') {
+            paymentTxPending.value = false
+            const tries = attempts ?? paymentTxPollAttempts.value
+            pushLog(`Tranzactie neconfirmata dupa ${tries} verificari; a fost trimisa la nod, dar nu este vizibila in pending/confirmed.`)
+            paymentResult.value = {
+              ok: true,
+              txId: result.txId,
+              message: `Tranzactie trimisa la nod, dar neconfirmata dupa fereastra de monitorizare (${tries} verificari). Verifica manual in explorer sau retrimite cu fee mai mare daca ramane nevizibila.`,
+            }
+          }
+        }, 10_000, PAYMENT_TX_POLL_MAX_ATTEMPTS)
+      }
+    } else {
+      pushLog(`Payment failed: ${result.message}`)
+    }
+  } catch (err) {
+    paymentResult.value = { ok: false, message: err instanceof Error ? err.message : 'Payment failed.' }
+  } finally {
+    paymentSending.value = false
+  }
+}
+
 onBeforeUnmount(() => {
   stopMiningLoop()
   stopHashrateMeter()
   stopWorkerStatsTimer()
   stopWatchdogTimer()
   stopPoolRewardTimer()
+  if (stopTxPoll) stopTxPoll()
 })
 
 onMounted(() => {
+  const savedLanguage = window.localStorage.getItem('webd_ui_language')
+  if (savedLanguage === 'ro' || savedLanguage === 'en') {
+    uiLanguage.value = savedLanguage
+  }
   startPoolRewardTimer()
   void hydrate()
 })
@@ -787,9 +951,10 @@ watch(
         </div>
 
         <div class="hero-actions">
-          <button class="ghost-btn" @click="showTechDetails = !showTechDetails">{{ showTechDetails ? 'Ascunde detalii' : 'Detalii tehnice' }}</button>
-          <button class="ghost-btn" :disabled="loading" @click="refreshPoolStats">Refresh pool</button>
-          <button class="primary-btn" :disabled="saving" @click="persistConfig">{{ saving ? 'Saving...' : 'Save config' }}</button>
+          <button class="ghost-btn" @click="toggleLanguage">{{ uiLanguage === 'ro' ? 'English' : 'Romana' }}</button>
+          <button class="ghost-btn" @click="showTechDetails = !showTechDetails">{{ showTechDetails ? t('Ascunde detalii', 'Hide details') : t('Detalii tehnice', 'Technical details') }}</button>
+          <button class="ghost-btn" :disabled="loading" @click="refreshPoolStats">{{ t('Refresh pool', 'Refresh pool') }}</button>
+          <button class="primary-btn" :disabled="saving" @click="persistConfig">{{ saving ? t('Se salveaza...', 'Saving...') : t('Salveaza config', 'Save config') }}</button>
         </div>
       </header>
 
@@ -809,14 +974,20 @@ watch(
           <div class="section-head">
             <div>
               <p class="eyebrow">Local config</p>
-              <h3>Pool and worker setup</h3>
+              <h3>{{ t('Setare pool si worker', 'Pool and worker setup') }}</h3>
             </div>
-            <p class="panel-meta">Stored under Electron userData.</p>
+            <p class="panel-meta">{{ t('Salvat in Electron userData.', 'Stored under Electron userData.') }}</p>
           </div>
 
           <label class="field">
             <span>Pool API URL</span>
             <input v-model="config.poolUrl" class="field-input" type="text" placeholder="pool/1/1/1/.../https:$$host:port" />
+          </label>
+
+          <label class="field">
+            <span>{{ t('Payment endpoint URL (optional)', 'Payment endpoint URL (optional)') }}</span>
+            <input v-model="config.paymentUrl" class="field-input" type="text" placeholder="https://host:port[/secret-path]" />
+            <small class="panel-meta">{{ t('Daca este gol, se foloseste pool URL. Pentru VueFrontend, poti pune aici URL-ul privat WALLET_SECRET_URL.', 'If empty, pool URL is used. For VueFrontend, you can set private WALLET_SECRET_URL here.') }}</small>
           </label>
 
           <label class="field">
@@ -826,7 +997,7 @@ watch(
 
           <label class="toggle-field">
             <input v-model="config.autoStart" type="checkbox" />
-            <span>Auto-start desktop miner</span>
+            <span>{{ t('Pornire automata desktop miner', 'Auto-start desktop miner') }}</span>
           </label>
         </article>
 
@@ -837,14 +1008,14 @@ watch(
           <div class="section-head">
             <div>
               <p class="eyebrow">Wallet compatibility</p>
-              <h3>Legacy .webd operations</h3>
+              <h3>{{ t('Operatii legacy .webd', 'Legacy .webd operations') }}</h3>
             </div>
           </div>
 
           <div class="hero-actions wallet-actions">
-            <button class="primary-btn" @click="generateWallet">Generate wallet</button>
-            <button class="ghost-btn" @click="importWalletFromFile">Import .webd file</button>
-            <button class="ghost-btn" :disabled="!currentWallet" @click="saveWalletToWebdFile">Save .webd file</button>
+            <button class="primary-btn" @click="generateWallet">{{ t('Genereaza wallet', 'Generate wallet') }}</button>
+            <button class="ghost-btn" @click="importWalletFromFile">{{ t('Importa fisier .webd', 'Import .webd file') }}</button>
+            <button class="ghost-btn" :disabled="!currentWallet" @click="saveWalletToWebdFile">{{ t('Salveaza fisier .webd', 'Save .webd file') }}</button>
           </div>
 
           <div class="wallet-summary-grid">
@@ -853,7 +1024,7 @@ watch(
               <p class="metric-value small-value">{{ walletSummary.address }}</p>
             </div>
             <div>
-              <p class="metric-label">Wallet total portofel (balance pool)</p>
+              <p class="metric-label">{{ t('Wallet total portofel (balance pool)', 'Wallet total (pool balance)') }}</p>
               <p class="metric-value small-value">{{ walletValueCards.total }} WEBD</p>
             </div>
           </div>
@@ -863,35 +1034,35 @@ watch(
           <div class="section-head">
             <div>
               <p class="eyebrow">Encrypted storage</p>
-              <h3>Local wallet vault</h3>
+              <h3>{{ t('Seif wallet local', 'Local wallet vault') }}</h3>
             </div>
-            <p class="panel-meta">AES-GCM + PBKDF2, compatibil cu flow-ul Android.</p>
+            <p class="panel-meta">{{ t('AES-GCM + PBKDF2, compatibil cu flow-ul Android.', 'AES-GCM + PBKDF2, compatible with Android flow.') }}</p>
           </div>
 
           <label class="field">
-            <span>Password for local encryption</span>
+            <span>{{ t('Parola pentru criptare locala', 'Password for local encryption') }}</span>
             <input v-model="walletPassword" class="field-input" type="password" placeholder="Minimum 8 characters" />
           </label>
 
-          <button class="primary-btn full-btn" @click="encryptWallet">Encrypt and save locally</button>
+          <button class="primary-btn full-btn" @click="encryptWallet">{{ t('Cripteaza si salveaza local', 'Encrypt and save locally') }}</button>
 
           <div class="diagnostics-grid encrypted-grid">
             <div>
-              <p class="metric-label">Encrypted wallet saved</p>
-              <p class="metric-value small-value">{{ config.walletEncrypted ? 'Yes' : 'No' }}</p>
+              <p class="metric-label">{{ t('Wallet criptat salvat', 'Encrypted wallet saved') }}</p>
+              <p class="metric-value small-value">{{ config.walletEncrypted ? t('Da', 'Yes') : t('Nu', 'No') }}</p>
             </div>
             <div>
-              <p class="metric-label">Saved address</p>
+              <p class="metric-label">{{ t('Adresa salvata', 'Saved address') }}</p>
               <p class="metric-value small-value">{{ config.walletAddress || '-' }}</p>
             </div>
           </div>
 
           <label class="field">
-            <span>Password for unlock</span>
-            <input v-model="walletUnlockPassword" class="field-input" type="password" placeholder="Unlock local wallet" />
+            <span>{{ t('Parola pentru deblocare', 'Password for unlock') }}</span>
+            <input v-model="walletUnlockPassword" class="field-input" type="password" :placeholder="t('Deblocheaza wallet local', 'Unlock local wallet')" />
           </label>
 
-          <button class="ghost-btn full-btn" @click="unlockWallet">Unlock saved wallet</button>
+          <button class="ghost-btn full-btn" @click="unlockWallet">{{ t('Deblocheaza wallet salvat', 'Unlock saved wallet') }}</button>
         </article>
       </section>
 
@@ -900,14 +1071,14 @@ watch(
           <div class="section-head">
             <div>
               <p class="eyebrow">Mining controls</p>
-              <h3>Start and stop mining</h3>
+              <h3>{{ t('Pornire si oprire mining', 'Start and stop mining') }}</h3>
             </div>
-            <p class="panel-meta">Autentificarea si job-urile sunt gestionate automat la start.</p>
+            <p class="panel-meta">{{ t('Autentificarea si job-urile sunt gestionate automat la start.', 'Authentication and jobs are handled automatically at start.') }}</p>
           </div>
 
           <div class="hero-actions wallet-actions">
-            <button class="primary-btn" :disabled="miningRunning" @click="startMiningLoop">Start mining</button>
-            <button class="ghost-btn" :disabled="!miningRunning" @click="stopMiningLoop">Stop mining</button>
+            <button class="primary-btn" :disabled="miningRunning" @click="startMiningLoop">{{ t('Porneste mining', 'Start mining') }}</button>
+            <button class="ghost-btn" :disabled="!miningRunning" @click="stopMiningLoop">{{ t('Opreste mining', 'Stop mining') }}</button>
           </div>
 
           <div class="wallet-summary-grid">
@@ -973,6 +1144,73 @@ watch(
           </template>
         </article>
 
+      </section>
+
+      <section class="layout-grid payment-grid">
+        <article class="panel form-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Transfer WEBD</p>
+              <h3>{{ t('Trimite plata', 'Send payment') }}</h3>
+            </div>
+            <p class="panel-meta">{{ t('Tranzactia este semnata local si trimisa prin pool.', 'Transaction is signed locally and sent via pool.') }}</p>
+          </div>
+
+          <div v-if="!currentWallet" class="banner error-banner" style="margin-bottom:12px">
+            {{ t('Wallet neblocat. Deblocheza sau importa wallet pentru a putea trimite WEBD.', 'Wallet is locked. Unlock or import wallet to send WEBD.') }}
+          </div>
+
+          <label class="field">
+            <span>{{ t('Adresa destinatar (WEBD$...)', 'Recipient address (WEBD$...)') }}</span>
+            <input v-model="paymentRecipient" class="field-input" type="text" placeholder="WEBD$..." :disabled="paymentSending" />
+          </label>
+
+          <label class="field">
+            <span>{{ t('Suma (WEBD)', 'Amount (WEBD)') }}</span>
+            <input v-model.number="paymentAmount" class="field-input" type="number" :min="MIN_PAYMENT_AMOUNT_WEBD" step="1" :disabled="paymentSending" />
+            <small class="panel-meta">{{ t('Suma minima', 'Minimum amount') }}: {{ MIN_PAYMENT_AMOUNT_WEBD }} WEBD &nbsp;·&nbsp; {{ t('Fee automat', 'Auto fee') }}: {{ MIN_PAYMENT_FEE_WEBD }} WEBD</small>
+          </label>
+
+          <button class="primary-btn full-btn" :disabled="!currentWallet || paymentSending" @click="sendPayment">
+            {{ paymentSending ? t('Se trimite...', 'Sending...') : t('Trimite WEBD', 'Send WEBD') }}
+          </button>
+
+          <div v-if="paymentResult" class="banner" :class="paymentResult.ok ? 'success-banner' : 'error-banner'" style="margin-top:12px">
+            {{ paymentResult.message }}
+            <template v-if="paymentResult.ok && paymentResult.txId">
+              <span style="display:block;font-size:0.75rem;opacity:0.8;word-break:break-all">TX: {{ paymentResult.txId }}</span>
+              <div style="display:grid;gap:6px;margin-top:8px">
+                <div
+                  v-for="stage in paymentStageItems"
+                  :key="stage.key"
+                  :style="{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '0.78rem',
+                    opacity: stage.status === 'pending' ? '0.72' : '1',
+                    fontWeight: stage.status === 'active' ? '700' : '500'
+                  }"
+                >
+                  <span>
+                    {{ stage.status === 'done' ? '✓' : stage.status === 'active' ? '●' : '○' }}
+                  </span>
+                  <span>{{ stage.label }}</span>
+                </div>
+              </div>
+              <span v-if="paymentTxPending && paymentTxNetworkStatus === 'unknown' && !paymentTxConfirmed" style="display:block;font-size:0.75rem;margin-top:6px">{{ t('Broadcast trimis; se asteapta vizibilitatea in pending.', 'Broadcast sent; waiting for pending visibility.') }}</span>
+              <span v-if="paymentTxPending && paymentTxNetworkStatus === 'unknown' && !paymentTxConfirmed" style="display:block;font-size:0.75rem;margin-top:4px;opacity:0.88">{{ t('Verificare retea: incercarea', 'Network check: attempt') }} {{ paymentTxPollAttempts }} / {{ PAYMENT_TX_POLL_MAX_ATTEMPTS }}.</span>
+              <span v-if="paymentTxPending && paymentTxNetworkStatus === 'propagated' && !paymentTxConfirmed" style="display:block;font-size:0.75rem;margin-top:6px">{{ t('Tranzactia este vizibila in pending. Se asteapta confirmarea in block.', 'Transaction is visible in pending. Waiting for block confirmation.') }}</span>
+              <span v-if="paymentTxConfirmed" style="display:block;font-size:0.75rem;margin-top:6px">{{ t('Tranzactia a fost confirmata pe blockchain.', 'Transaction was confirmed on blockchain.') }}</span>
+              <span v-if="paymentTxPollingFinished && paymentTxNetworkStatus === 'unknown' && !paymentTxConfirmed" style="display:block;font-size:0.75rem;margin-top:6px">{{ t('Monitorizarea s-a incheiat: tranzactia nu a aparut in pending/confirmed in intervalul de polling.', 'Monitoring finished: transaction did not appear in pending/confirmed during polling window.') }}</span>
+              <div v-if="paymentTxPollingFinished && paymentTxNetworkStatus === 'unknown' && !paymentTxConfirmed" style="display:flex;align-items:center;gap:8px;font-size:0.78rem;margin-top:8px;font-weight:700">
+                <span>!</span>
+                <span>{{ t('Monitorizare incheiata fara confirmare', 'Monitoring finished without confirmation') }} ({{ paymentTxPollAttempts }} / {{ PAYMENT_TX_POLL_MAX_ATTEMPTS }} {{ t('verificari', 'checks') }}).</span>
+              </div>
+              <a :href="explorerTxUrl(config.poolUrl, paymentResult.txId)" target="_blank" rel="noopener" style="display:block;font-size:0.75rem;margin-top:4px;color:inherit;text-decoration:underline">{{ t('Verifica tranzactia pe nod', 'Check transaction on node') }} →</a>
+            </template>
+          </div>
+        </article>
       </section>
     </main>
   </div>

@@ -1,5 +1,6 @@
 export interface DesktopAppConfig {
   poolUrl: string
+  paymentUrl: string
   walletAddress: string
   walletEncrypted: string
   poolKey: string
@@ -86,4 +87,20 @@ export interface PoolAddressReward {
 export interface AppMeta {
   version: string
   platform: string
+}
+
+export interface WebdPaymentRequest {
+  poolUrl: string
+  paymentUrl?: string
+  recipientAddress: string
+  amountWebd: number
+  feeWebd: number
+  wallet: GeneratedWallet
+}
+
+export interface WebdPaymentResult {
+  ok: boolean
+  txId: string
+  method: 'socket' | 'http-chain' | 'http-json-rpc' | 'http-wallet-secret'
+  message: string
 }

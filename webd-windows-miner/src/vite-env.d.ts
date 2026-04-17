@@ -2,6 +2,7 @@
 
 interface DesktopAppConfig {
   poolUrl: string
+  paymentUrl: string
   walletAddress: string
   walletEncrypted: string
   poolKey: string
@@ -16,6 +17,22 @@ interface GeneratedWallet {
   secretHex: string
   publicKeyHex: string
   unencodedAddressHex: string
+}
+
+interface WebdPaymentRequest {
+  poolUrl: string
+  paymentUrl?: string
+  recipientAddress: string
+  amountWebd: number
+  feeWebd: number
+  wallet: GeneratedWallet
+}
+
+interface WebdPaymentResult {
+  ok: boolean
+  txId: string
+  method: 'socket' | 'http-chain' | 'http-json-rpc' | 'http-wallet-secret'
+  message: string
 }
 
 interface Window {
@@ -35,5 +52,6 @@ interface Window {
     legacySubmitShare: (token: string, jobId: string, nonce: number, hashHex: string, hashes?: number, timeDiff?: number) => Promise<{ result: string; message: string }>
     legacyGetWorkerStats: (token: string) => Promise<any>
     legacyGetPoolStats: () => Promise<any>
+    sendTransaction: (request: WebdPaymentRequest) => Promise<WebdPaymentResult>
   }
 }

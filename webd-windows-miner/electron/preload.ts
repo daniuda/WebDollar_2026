@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 type AppConfig = {
   poolUrl: string
+  paymentUrl: string
   walletAddress: string
   walletEncrypted: string
   poolKey: string
@@ -38,6 +39,22 @@ type LegacyShareResult = {
   message: string
 }
 
+type PaymentRequest = {
+  poolUrl: string
+  paymentUrl?: string
+  recipientAddress: string
+  amountWebd: number
+  feeWebd: number
+  wallet: GeneratedWallet
+}
+
+type PaymentResult = {
+  ok: boolean
+  txId: string
+  method: 'http-chain' | 'http-json-rpc' | 'http-wallet-secret'
+  message: string
+}
+
 contextBridge.exposeInMainWorld('desktopApi', {
   getMeta: () => ipcRenderer.invoke('app:get-meta') as Promise<{ version: string; platform: string }>,
   loadConfig: () => ipcRenderer.invoke('config:load') as Promise<AppConfig>,
@@ -54,4 +71,5 @@ contextBridge.exposeInMainWorld('desktopApi', {
   legacySubmitShare: (token: string, jobId: string, nonce: number, hashHex: string, hashes = 1, timeDiff = 0) => ipcRenderer.invoke('legacy:submit-share', token, jobId, nonce, hashHex, hashes, timeDiff) as Promise<LegacyShareResult>,
   legacyGetWorkerStats: (token: string) => ipcRenderer.invoke('legacy:get-worker-stats', token),
   legacyGetPoolStats: () => ipcRenderer.invoke('legacy:get-pool-stats'),
+  sendTransaction: (request: PaymentRequest) => ipcRenderer.invoke('send-transaction', request) as Promise<PaymentResult>,
 })

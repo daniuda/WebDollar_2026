@@ -1,10 +1,11 @@
-import type { AppMeta, DesktopAppConfig, GeneratedWallet } from '../types/miner'
+import type { AppMeta, DesktopAppConfig, GeneratedWallet, WebdPaymentRequest, WebdPaymentResult } from '../types/miner'
 import { getDefaultPoolAddress } from './poolAddress'
 
 const CONFIG_KEY = 'webd_windows_miner_config'
 
 const fallbackConfig: DesktopAppConfig = {
   poolUrl: getDefaultPoolAddress(),
+  paymentUrl: '',
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',
@@ -111,4 +112,12 @@ export function decryptDesktopSecret(envelopeJson: string, passphrase: string): 
     return Promise.reject(new Error('Wallet operations require Electron runtime.'))
   }
   return api.decryptSecret(envelopeJson, passphrase)
+}
+
+export function sendDesktopTransaction(request: WebdPaymentRequest): Promise<WebdPaymentResult> {
+  const api = getDesktopApi()
+  if (!api) {
+    return Promise.reject(new Error('Payment operations require Electron runtime.'))
+  }
+  return api.sendTransaction(request)
 }

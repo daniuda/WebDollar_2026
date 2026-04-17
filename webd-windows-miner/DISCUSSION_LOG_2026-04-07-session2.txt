@@ -1,0 +1,86 @@
+Discussion summary - 2026-04-07 (Session 2)
+Project: webd-windows-miner
+
+User issue identified
+- Wallet showing incoming WEBD but not updating in application display without manual refresh.
+- Need to verify if mining uses the new balance.
+
+Investigation findings
+- UI refresh logic: wallet values fetched from pool endpoints at startup, during mining loop refresh, and on manual `Refresh pool`.
+- Mining logic: PoS uses balance from job/work payload delivered by pool; balance is updated when new work arrives.
+- Problem: no continuous heartbeat refresh for wallet reward values when user idle/not mining.
+
+Solution implemented (Checkpoint 036)
+- Added periodic wallet reward refresh every 20 seconds via timer.
+- Added immediate refresh triggers on pool URL or wallet address config changes.
+- Result: incoming WEBD now visible in UI with max 20-second delay, independent of mining activity.
+- Mining continues to use fresh balance from job payloads, unaffected by this UI change.
+
+Actions completed
+- Modified src/App.vue: added poolRewardTimer, watch on config changes, proper cleanup.
+- Updated WORKLOG.txt with Checkpoint 036.
+- Verified build: all typecheck/bundle steps passed.
+- Created commit 0c55100 with message "fix: periodic wallet reward refresh...".
+- Pushed to origin/master: 0a5d6e6..0c55100.
+- Generated fresh installer: WebDollar Windows Miner Setup 0.0.3.exe.
+
+Status before power outage notification
+- Release ready with checkpoint 036 merged and pushed.
+- Resume keyword remains: "reluam aplicatia de minat".
+
+---
+
+Continuation - Payment feature resumed (same day)
+
+Objective
+- Continue from `PAYMENT_FEATURE_PLAN.md` and implement M1 (infrastructure without UI), with incremental saves to avoid losing progress on power loss.
+
+What was implemented now
+- Added transaction builder module in Electron: `electron/txBuilder.ts`.
+	- Builds signed payment tx using unlocked wallet seed/public key.
+	- Includes tx serialization + txId computation.
+- Added transaction broadcast module: `electron/txBroadcast.ts`.
+	- Strategy: legacy socket first for `pool/...`, HTTP fallback after.
+	- HTTP attempts `/chain/transactions/new`, then JSON-RPC `sendRawTransaction` fallback.
+- Added legacy socket payment emitter helper: `legacyPool.broadcastTransaction()`.
+- Added IPC route in main process: `send-transaction`.
+- Exposed renderer bridge: `desktopApi.sendTransaction()`.
+- Added renderer wrappers/types:
+	- `src/services/paymentApi.ts`
+	- `src/services/desktopApi.ts` extended
+	- `src/types/miner.ts` with `WebdPaymentRequest` / `WebdPaymentResult`
+	- `src/vite-env.d.ts` updated with new API typing
+
+Issue encountered and fixed
+- TypeScript conflict: custom `PaymentRequest` name clashed with DOM `PaymentRequest`.
+- Fix: renamed custom models to `WebdPaymentRequest` and `WebdPaymentResult` across renderer typings/services.
+
+Verification
+- Full build passed:
+	- `typecheck:app`
+	- `typecheck:node`
+	- `build:renderer`
+	- `build:main`
+
+Current state
+- Payment M1 infrastructure is in place and compiles.
+- Next logical step: M2 UI (`PaymentPanel.vue` + integration in `App.vue`) and runtime precondition indicators.
+
+---
+
+Installer issue reported by user
+- Symptom: after installation, app opens with a black screen.
+
+Diagnosis
+- Packaged renderer was trying to load JS/CSS from absolute paths (`/assets/...`).
+- In installed Electron app (`file://`), absolute `/assets/...` does not resolve to bundled files.
+
+Fix applied
+- Updated `vite.config.ts` with `base: './'`.
+- Rebuilt project and confirmed generated `dist/index.html` now uses relative paths (`./assets/...`).
+
+Verification
+- Full build passed after fix (`npm run build`).
+
+Status
+- Black-screen root cause addressed in source; next installer build should include this fix.

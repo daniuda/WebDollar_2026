@@ -2,8 +2,11 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage } from 'el
 import type { IpcMainInvokeEvent, NativeImage } from 'electron'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import axios from 'axios'
 import { decryptSecret, encryptSecret, exportLegacyWallet, generateWallet, importWalletRaw } from './wallet.js'
-import { LegacyPoolBridge } from './legacyPool.js'
+import { LegacyPoolBridge, NodeTxBroadcaster } from './legacyPool.js'
+import { buildSignedPaymentTransaction } from './txBuilder.js'
+import { broadcastPaymentTransaction } from './txBroadcast.js'
 
 const isDev = !app.isPackaged
 const appVersion = app.getVersion()
@@ -11,8 +14,81 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
 const legacyPool = new LegacyPoolBridge()
+const nodeTxBroadcaster = new NodeTxBroadcaster()
+
+function resolvePoolBaseFromConfig(poolUrl: string): string {
+  const value = poolUrl.trim()
+  if (!value) return ''
+
+  if (value.startsWith('pool/')) {
+    const parts = value.split('/')
+    if (parts.length >= 8) {
+      const rawUrl = parts.slice(7).join('/')
+      return rawUrl.replace('$$', '//').replace(/\/$/, '')
+    }
+  }
+
+  return value.replace('$$', '//').replace(/\/$/, '')
+}
+
+async function fetchAddressNonce(poolUrl: string, walletAddress: string): Promise<number> {
+  const baseUrl = resolvePoolBaseFromConfig(poolUrl)
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    throw new Error('URL pool invalid pentru preluarea nonce')
+  }
+
+  const response = await axios.get(`${baseUrl}/address/nonce/${encodeURIComponent(walletAddress)}`, {
+    timeout: 15_000,
+  })
+
+  const nonce = Number(response.data?.nonce)
+  if (!Number.isInteger(nonce) || nonce < 0) {
+    throw new Error('Nonce invalid primit de la pool/node')
+  }
+  if (nonce > 0xffff) {
+    throw new Error('Nonce prea mare pentru formatul tranzactiei (max 65535)')
+  }
+
+  return nonce
+}
+
+async function fetchChainTimeLock(poolUrl: string): Promise<number> {
+  const baseUrl = resolvePoolBaseFromConfig(poolUrl)
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    throw new Error('URL pool invalid pentru preluarea height/timeLock')
+  }
+
+  let topHeight: number | null = null
+
+  try {
+    const topResp = await axios.get(`${baseUrl}/top`, { timeout: 15_000 })
+    const topValue = Number(topResp.data?.top)
+    if (Number.isInteger(topValue) && topValue >= 1) {
+      topHeight = topValue
+    }
+  } catch {
+    // Fallback below to root info endpoint.
+  }
+
+  if (topHeight === null) {
+    const infoResp = await axios.get(baseUrl, { timeout: 15_000 })
+    const blocksLength = Number(infoResp.data?.blocks?.length)
+    if (!Number.isInteger(blocksLength) || blocksLength < 1) {
+      throw new Error('Height invalid primit de la pool/node pentru timeLock')
+    }
+    topHeight = blocksLength
+  }
+
+  const timeLock = Math.max(0, topHeight - 1)
+  if (!Number.isInteger(timeLock) || timeLock < 0 || timeLock > 0xffffff) {
+    throw new Error('timeLock calculat invalid (in afara intervalului 0..16777215)')
+  }
+
+  return timeLock
+}
 const defaultConfig = {
   poolUrl: 'pool/1/1/1/SpyClub/0.0001/374d24d549e73f05280b239d96d7c6b28f15aabb5d41e89818b660a9ebc3276e/https:$$node.spyclub.ro:8080',
+  paymentUrl: '',
   walletAddress: '',
   walletEncrypted: '',
   poolKey: '',
@@ -230,6 +306,31 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('legacy:get-worker-stats', async (_event: IpcMainInvokeEvent, token: string) => legacyPool.getWorkerStats(token))
   ipcMain.handle('legacy:get-pool-stats', async () => legacyPool.getPoolStats())
+
+  ipcMain.handle('send-transaction', async (_event: IpcMainInvokeEvent, request: {
+    poolUrl: string
+    paymentUrl?: string
+    recipientAddress: string
+    amountWebd: number
+    feeWebd: number
+    wallet: { address: string; secretHex: string; publicKeyHex: string; unencodedAddressHex: string }
+  }) => {
+    const [nonce, timeLock] = await Promise.all([
+      fetchAddressNonce(request.poolUrl, request.wallet.address),
+      fetchChainTimeLock(request.poolUrl),
+    ])
+
+    const tx = buildSignedPaymentTransaction({
+      wallet: request.wallet,
+      recipientAddress: request.recipientAddress,
+      amountWebd: request.amountWebd,
+      feeWebd: request.feeWebd,
+      nonce,
+      timeLock,
+    })
+
+    return broadcastPaymentTransaction(request.poolUrl, request.paymentUrl, tx, nodeTxBroadcaster)
+  })
 
   ipcMain.handle('config:load', async () => loadConfig())
   ipcMain.handle('config:save', async (_event: IpcMainInvokeEvent, config: Partial<AppConfig>) => saveConfig(config))

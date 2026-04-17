@@ -1,0 +1,11 @@
+{
+  "poolUrl": "pool/1/1/1/LocalTest/0.0001/374d24d549e73f05280b239d96d7c6b28f15aabb5d41e89818b660a9ebc3276e/http:$$localhost:9090",
+  "paymentUrl": "",
+  "walletAddress": "",
+  "walletEncrypted": "",
+  "poolKey": "",
+  "threadCount": 1,
+  "autoStart": false,
+  "simpleMode": false,
+  "payoutTarget": 1
+}

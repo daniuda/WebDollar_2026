@@ -1,0 +1,133 @@
+SESSION LOG - 2026-04-09
+
+Context
+- Obiectiv: stabilizare trimitere tranzactii in webd-windows-miner (broadcast, status, UX) + pachetare executabil beta.
+- Cerinte utilizator: progres clar in UI, checkpoint-uri salvate, build beta executabil.
+
+Modificari implementate
+1) Broadcast si detectie status tranzactie
+- Socket-first broadcast catre noduri candidate, cu fallback pe HTTP/JSON-RPC.
+- Detectie pending extinsa pe:
+  - /transactions/pending/object
+  - /transactions/pending
+- Matching robust pentru txId in structuri serializate Buffer.
+
+2) Corectie respingere "transaction is too old in pool"
+- Cauza identificata: tranzactii semnate cu timeLock stale (0).
+- Fix aplicat:
+  - preluare inaltime lant din nod (/top, fallback /)
+  - calcul timeLock live (top-1)
+  - timeLock trimis explicit in builder la semnare.
+
+3) UX status plata
+- Etape afisate: Trimisa la nod -> In pending/mempool -> Confirmata in block.
+- Progres polling vizibil in UI (incercare curenta / max).
+- Stare explicita la finalul monitorizarii fara confirmare.
+
+4) Confirmare inainte de trimitere
+- Prompt DA/NU inainte de send:
+  - afiseaza suma WEBD si adresa destinatar.
+  - NU => transfer anulat.
+
+5) Fereastra de verificare extinsa
+- Polling tranzactie extins la 60 verificari (~10 minute la 10s).
+
+6) Operare/dev runtime
+- Procese stale Node/Electron identificate si oprite.
+- Restart curat din proiectul corect webd-windows-miner.
+
+Validare
+- Build complet trecut dupa modificari:
+  - typecheck app
+  - typecheck node
+  - build renderer
+  - build main
+
+Pachetare beta executabil
+- Comanda rulata cu succes: npm run dist
+- Artefacte generate:
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe
+  - dist/win-unpacked/WebDollar Windows Miner.exe
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe.blockmap
+
+Documente actualizate
+- BETA_LAUNCH_PLAN_CHECKLIST.md
+  - checkpoint-uri runtime si pachetare beta executabil.
+- NODE_WEBDOLLAR_API_INVENTORY_RO.md
+  - inventar API confirmat in sesiune.
+
+Punct de reluare
+- Beta curenta functionala cu transfer validat si executabil generat.
+- Urmatorii pasi recomandati:
+  1) smoke test installer pe sistem curat
+  2) test 2-3 transferuri consecutive (confirmare + pending + confirmed)
+  3) bump de versiune pentru urmatorul beta daca se doreste release nou
+
+Actualizare ulterioara - Refacere documentatie instalare + utilizare
+
+Modificari implementate
+1) USER_GUIDE_BETA_RO.md
+- Ghid rescris complet pentru versiunea beta 0.0.3.
+- Structura noua orientata practic:
+  - ce contine pachetul
+  - instalare (installer + portabil)
+  - first start/config
+  - wallet
+  - mining
+  - transfer WEBD cu confirmare DA/NU
+  - status tranzactie si monitorizare extinsa
+  - troubleshooting rapid
+  - recomandari de testare beta
+
+Validare
+- Documentatia este aliniata cu comportamentul curent al aplicatiei:
+  - prompt de confirmare inainte de transfer
+  - monitorizare tranzactie extinsa (~10 minute)
+  - artefacte executabil beta 0.0.3
+
+Actualizare ulterioara - Varianta foarte scurta pentru useri non-tehnici
+
+Modificari implementate
+1) USER_GUIDE_BETA_RO_SHORT.md (nou)
+- Ghid scurt, pas cu pas, cu limbaj simplu:
+  - instalare
+  - setare rapida
+  - wallet
+  - mining start/stop
+  - trimitere WEBD cu confirmare DA/NU
+  - ce faci daca transferul apare mai tarziu
+  - troubleshooting in 4 pasi
+
+Validare
+- Ghidul scurt este aliniat cu versiunea beta curenta 0.0.3.
+
+Actualizare ulterioara - Fisier pentru publicare download pe site
+
+Modificari implementate
+1) DOWNLOAD_PACKAGE_FOR_SITE_RO.md (nou)
+- Lista explicita cu fisierele de pus pe site pentru download:
+  - kit instalare (installer + portabil + blockmap optional)
+  - documentatie (ghid complet + ghid scurt + API optional)
+- Include descrieri scurte recomandate pentru butoanele de download.
+
+Actualizare ulterioara - Bilingv RO/EN in UI + documentatie + kit nou
+
+Modificari implementate
+1) UI aplicatie
+- Adaugat buton de schimbare limba in header (RO/EN).
+- Textelor principale din ecran li s-a adaugat suport bilingv (config, wallet, mining, transfer, status tranzactie).
+
+2) Documentatie EN (nou)
+- USER_GUIDE_BETA_EN.md
+- USER_GUIDE_BETA_SHORT_EN.md
+- DOWNLOAD_PACKAGE_FOR_SITE_EN.md
+
+3) Documentatie RO actualizata
+- DOWNLOAD_PACKAGE_FOR_SITE_RO.md include acum si fisierele EN.
+
+Validare
+- Build complet trecut.
+- Kit executabil regenerat cu succes (`npm run dist`):
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe
+  - dist/win-unpacked/WebDollar Windows Miner.exe
+  - dist/WebDollar Windows Miner Setup 0.0.3.exe.blockmap
