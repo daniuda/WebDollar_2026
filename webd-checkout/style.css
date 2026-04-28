@@ -1,0 +1,189 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f0f4f8;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 12px;
+}
+
+.container {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+  padding: 28px 24px;
+}
+
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+.logo-symbol { font-size: 1.8rem; color: #2e7d32; font-weight: bold; }
+.logo-text   { font-size: 1.2rem; font-weight: bold; color: #1b5e20; letter-spacing: 1px; }
+
+/* Headings */
+h1 { text-align: center; font-size: 1.2rem; color: #222; margin-bottom: 18px; }
+
+/* Config form */
+#merchant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+label { font-size: 0.85rem; color: #555; }
+input[type="text"], input[type="number"] {
+  padding: 9px 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 100%;
+}
+input:focus { outline: none; border-color: #2e7d32; }
+
+button {
+  padding: 10px;
+  font-size: 1rem;
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover { background: #388e3c; }
+
+.hint { font-size: 0.8rem; color: #888; margin-top: 12px; margin-bottom: 4px; }
+
+.link-box {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  word-break: break-all;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+/* Amount badge */
+.amount-badge {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: bold;
+  color: #2e7d32;
+  margin-bottom: 16px;
+  letter-spacing: 1px;
+}
+
+/* QR */
+#qr-section { text-align: center; margin-bottom: 16px; }
+#qrcode svg { border-radius: 8px; border: 6px solid #fff; box-shadow: 0 0 0 1px #e0e0e0; }
+.address-text {
+  font-size: 0.72rem;
+  color: #888;
+  word-break: break-all;
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+/* Status box */
+.status-box {
+  border-radius: 10px;
+  padding: 16px 12px;
+  text-align: center;
+  transition: background 0.4s, border-color 0.4s;
+  border: 2px solid transparent;
+}
+.status-waiting  { background: #f3f6ff; border-color: #90caf9; }
+.status-detected { background: #fff8e1; border-color: #ffd54f; }
+.status-confirmed{ background: #e8f5e9; border-color: #66bb6a; }
+.status-expired  { background: #fce4ec; border-color: #ef9a9a; }
+
+.status-icon { margin-bottom: 8px; }
+
+/* Spinner */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #bbdefb;
+  border-top-color: #1976d2;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Checkmark */
+.checkmark {
+  width: 44px;
+  height: 44px;
+  background: #43a047;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: #fff;
+  animation: pop 0.3s ease;
+}
+@keyframes pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  80%  { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Crossmark */
+.crossmark {
+  width: 44px;
+  height: 44px;
+  background: #e53935;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: #fff;
+}
+
+#status-text {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+/* Countdown */
+.countdown {
+  font-size: 0.82rem;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* TX ID */
+.txid-box {
+  margin-top: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  word-break: break-all;
+  color: #555;
+}
+.txid-box .hint { display: inline; margin: 0; color: #888; }
+
+/* Copy btn */
+#copy-link-btn {
+  width: 100%;
+  margin-top: 4px;
+  background: #1565c0;
+}
+#copy-link-btn:hover { background: #1976d2; }

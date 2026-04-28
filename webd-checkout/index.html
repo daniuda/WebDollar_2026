@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plată WebDollar</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <span class="logo-symbol">₩</span>
+            <span class="logo-text">WebDollar</span>
+        </div>
+
+        <!-- Config form (afișat dacă lipsesc URL params) -->
+        <div id="config-form">
+            <h1>Configurare plată</h1>
+            <form id="merchant-form">
+                <label for="cfg-address">Adresă WEBD de primit:</label>
+                <input type="text" id="cfg-address" placeholder="WEBD$..." required>
+                <label for="cfg-amount">Sumă (WEBD):</label>
+                <input type="number" id="cfg-amount" min="0.01" step="0.01" required>
+                <button type="submit">Generează link plată</button>
+            </form>
+            <div id="generated-link" style="display:none;">
+                <p class="hint">Link pentru client:</p>
+                <div id="link-display" class="link-box"></div>
+                <button id="copy-link-btn">Copiază link</button>
+            </div>
+        </div>
+
+        <!-- Checkout activ (URL params prezenți) -->
+        <div id="checkout-view" style="display:none;">
+            <h1 id="pay-title">Plată WebDollar</h1>
+            <div id="amount-display" class="amount-badge"></div>
+
+            <div id="qr-section">
+                <div id="qrcode"></div>
+                <p id="qr-address" class="address-text"></p>
+            </div>
+
+            <!-- Status -->
+            <div id="status-box" class="status-box status-waiting">
+                <div class="status-icon">
+                    <div id="spinner" class="spinner"></div>
+                    <div id="checkmark" class="checkmark" style="display:none;">✓</div>
+                    <div id="crossmark" class="crossmark" style="display:none;">✕</div>
+                </div>
+                <div id="status-text">Așteptăm plata...</div>
+                <div id="countdown" class="countdown"></div>
+            </div>
+
+            <div id="txid-box" style="display:none;" class="txid-box">
+                <span class="hint">TX ID:</span>
+                <span id="txid-value"></span>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
