@@ -13,11 +13,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from tx_builder import build_signed_tx, verify_signature
+    from tx_builder import build_signed_tx, build_signed_tx_multi, verify_signature, PAYOUT_FEE_PCT
     HAS_TX_BUILDER = True
 except ImportError as _e:
     HAS_TX_BUILDER = False
     _TX_BUILDER_ERR = str(_e)
+    PAYOUT_FEE_PCT = 0.5
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR       = Path(__file__).parent
@@ -59,6 +60,19 @@ def _conn():
     c.row_factory = sqlite3.Row
     return c
 
+def _migrate_db():
+    """Adaugă coloane noi în DB-uri existente fără să strice nimic."""
+    migrations = [
+        "ALTER TABLE user_balances ADD COLUMN rewards_paid REAL NOT NULL DEFAULT 0",
+    ]
+    with _db_lock, _conn() as c:
+        for sql in migrations:
+            try:
+                c.execute(sql)
+                c.commit()
+            except Exception:
+                pass  # coloana există deja
+
 def init_db():
     with _db_lock, _conn() as c:
         c.executescript('''
@@ -74,6 +88,7 @@ def init_db():
                 address TEXT PRIMARY KEY,
                 deposited_total REAL NOT NULL DEFAULT 0,
                 rewards_total REAL NOT NULL DEFAULT 0,
+                rewards_paid REAL NOT NULL DEFAULT 0,
                 withdrawn_total REAL NOT NULL DEFAULT 0,
                 first_deposit_ts INTEGER,
                 last_activity_ts INTEGER
@@ -116,8 +131,10 @@ def db_get_balance(address: str) -> dict:
         row = c.execute('SELECT * FROM user_balances WHERE address=?', (address,)).fetchone()
     if not row:
         return {'address': address, 'deposited_total': 0.0, 'rewards_total': 0.0,
-                'withdrawn_total': 0.0, 'available': 0.0}
+                'rewards_paid': 0.0, 'withdrawn_total': 0.0, 'available': 0.0,
+                'rewards_pending': 0.0}
     d = dict(row)
+    d['rewards_pending'] = round(d['rewards_total'] - d.get('rewards_paid', 0.0), 4)
     d['available'] = round(d['deposited_total'] + d['rewards_total'] - d['withdrawn_total'], 4)
     return d
 
@@ -152,6 +169,16 @@ def db_credit_reward(address: str, amount: float):
         ''', (address, amount, now))
         c.commit()
 
+def db_mark_rewards_paid(address: str, amount: float):
+    """Marchează recompensele ca plătite automat (multi-output tx)."""
+    with _db_lock, _conn() as c:
+        c.execute('''UPDATE user_balances
+                     SET rewards_paid = rewards_paid + ?,
+                         withdrawn_total = withdrawn_total + ?,
+                         last_activity_ts = ?
+                     WHERE address = ?''', (amount, amount, int(time.time()), address))
+        c.commit()
+
 def db_add_withdrawal(address: str, amount: float, tx_hex=None, tx_id=None, status='pending') -> int:
     with _db_lock, _conn() as c:
         cur = c.execute(
@@ -166,12 +193,14 @@ def db_add_withdrawal(address: str, amount: float, tx_hex=None, tx_id=None, stat
 def db_get_all_stakers() -> list:
     with _db_lock, _conn() as c:
         rows = c.execute(
-            'SELECT address, deposited_total, rewards_total, withdrawn_total, last_activity_ts FROM user_balances'
+            'SELECT address, deposited_total, rewards_total, COALESCE(rewards_paid,0) as rewards_paid,'
+            ' withdrawn_total, last_activity_ts FROM user_balances'
             ' WHERE deposited_total > 0 ORDER BY deposited_total DESC'
         ).fetchall()
     result = []
     for r in rows:
         d = dict(r)
+        d['rewards_pending'] = round(d['rewards_total'] - d['rewards_paid'], 4)
         d['available'] = round(d['deposited_total'] + d['rewards_total'] - d['withdrawn_total'], 4)
         result.append(d)
     return result
@@ -390,15 +419,63 @@ def _distribute_reward(before: float, after: float, reward: float):
     total_stake = sum(s['available'] for s in active)
     if total_stake <= 0:
         return
-    fee_taken    = reward * POOL_FEE_PCT
+
+    fee_taken     = reward * POOL_FEE_PCT
     distributable = reward - fee_taken
-    event_id     = db_add_reward_event(before, after, reward, total_stake, distributable, fee_taken)
+    db_add_reward_event(before, after, reward, total_stake, distributable, fee_taken)
+
+    # Creditează recompensele în SQLite
+    shares = {}
     for s in active:
         share = round((s['available'] / total_stake) * distributable, 6)
         if share >= 0.0001:
             db_credit_reward(s['address'], share)
+            shares[s['address']] = share
+
     print(f'[REW] Distribuit {distributable:.4f} WEBD la {len(active)} stakers', flush=True)
+
+    # Auto-payout multi-output pentru stakerii care depășesc pragul
+    if HAS_TX_BUILDER:
+        _auto_payout(shares)
+
     db_prune()
+
+
+def _auto_payout(new_shares: dict):
+    """
+    Construiește o singură tranzacție multi-output pentru toți stakerii
+    cu recompense acumulate >= MIN_PAYOUT. Taxa = 0.5% din total (o singură taxă).
+    """
+    eligible = []
+    for address in new_shares:
+        bal = db_get_balance(address)
+        pending = bal['rewards_pending']
+        if pending >= MIN_PAYOUT:
+            eligible.append({'address': address, 'amount_webd': round(pending, 4)})
+
+    if not eligible:
+        return
+
+    total = sum(o['amount_webd'] for o in eligible)
+    try:
+        tx = build_signed_tx_multi(
+            from_address=REWARDS_ADDRESS,
+            private_key_hex=REWARDS_PRIVKEY,
+            public_key_hex=REWARDS_PUBKEY,
+            outputs=eligible,
+            fee_pct=PAYOUT_FEE_PCT,
+        )
+        result = broadcast_tx(tx['serialized_hex'])
+        status = 'sent' if result.get('result') else 'failed'
+        for o in eligible:
+            if status == 'sent':
+                db_mark_rewards_paid(o['address'], o['amount_webd'])
+            db_add_withdrawal(o['address'], o['amount_webd'], tx['serialized_hex'], tx['tx_id'], status)
+        pct_eff = tx['fee_webd'] / total * 100
+        print(f'[PAY] {len(eligible)} stakers, {total:.4f} WEBD, '
+              f'fee {tx["fee_webd"]:.4f} WEBD ({pct_eff:.2f}%), status={status}', flush=True)
+    except Exception as e:
+        print(f'[PAY ERROR] {e}', flush=True)
 
 # ── Withdrawal ─────────────────────────────────────────────────────────────────
 def process_withdrawal(address: str, amount: float, pubkey_hex: str,
@@ -573,6 +650,7 @@ if __name__ == '__main__':
         print(f'[WARN] tx_builder indisponibil — retrageri dezactivate. pip3 install cryptography')
 
     init_db()
+    _migrate_db()
     threading.Thread(target=deposit_scan_loop,  daemon=True, name='deposit-scan').start()
     threading.Thread(target=reward_monitor_loop, daemon=True, name='reward-monitor').start()
 

@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 WEBD_UNITS = 10_000
 MIN_FEE_WEBD = 10
 MIN_AMOUNT_WEBD = 10
+PAYOUT_FEE_PCT = 0.5   # procent din total_out pentru tranzacții multi-output
 TX_VERSION = 0x02
 WEBD_TOKEN_ID = bytes([0x01])
 WIF_PREFIX = bytes([0x58, 0x40, 0x43, 0xfe])
@@ -187,6 +188,92 @@ def build_signed_tx(
             }],
             'fee': fee_units,
         },
+    }
+
+
+# ── multi-output builder ───────────────────────────────────────────────────────
+
+def build_signed_tx_multi(
+    from_address: str,
+    private_key_hex: str,
+    public_key_hex: str,
+    outputs: list,          # [{'address': 'WEBD$...', 'amount_webd': float}, ...]
+    fee_pct: float = PAYOUT_FEE_PCT,
+    nonce: int = None,
+    time_lock: int = 0,
+) -> dict:
+    """
+    Tranzacție cu N destinatari — o singură taxă pentru toți.
+    fee = max(MIN_FEE_WEBD, fee_pct% din total_out).
+    Reduce costul per staker la fee_pct% indiferent de numărul de destinatari.
+    """
+    if not outputs:
+        raise ValueError('Lista de destinatari e goală')
+    if nonce is None:
+        nonce = int.from_bytes(os.urandom(2), 'big')
+
+    decoded = []
+    total_out = 0.0
+    for o in outputs:
+        addr_bytes   = decode_webd_address(o['address'])
+        amount_webd  = float(o['amount_webd'])
+        if amount_webd <= 0:
+            raise ValueError(f"Sumă invalidă pentru {o['address']}: {amount_webd}")
+        amount_units = round(amount_webd * WEBD_UNITS)
+        decoded.append((addr_bytes, amount_units, o['address'], amount_webd))
+        total_out += amount_webd
+
+    fee_webd          = max(MIN_FEE_WEBD, round(total_out * fee_pct / 100.0, 4))
+    from_amount_units = round((total_out + fee_webd) * WEBD_UNITS)
+    from_unencoded    = decode_webd_address(from_address)
+    from_public_key   = hex_to_bytes(public_key_hex)
+
+    if len(from_public_key) != 32:
+        raise ValueError('Cheie publică invalidă (trebuie 32 bytes)')
+
+    # to section: u1(N) + [addr(20) + amount_7le(7)] × N
+    n          = len(decoded)
+    to_section = u1(n)
+    for addr_bytes, amount_units, _, _ in decoded:
+        to_section += addr_bytes + u7le(amount_units)
+
+    signing_payload = (
+        u1(TX_VERSION) +
+        u2(nonce) +
+        u3(time_lock) +
+        from_unencoded +
+        from_public_key +
+        from_public_key +
+        u1(1) +
+        u7le(from_amount_units) +
+        to_section
+    )
+
+    signature = sign_ed25519(private_key_hex, signing_payload)
+    if len(signature) != 64:
+        raise ValueError('Semnătură Ed25519 invalidă')
+
+    serialized = (
+        u1(TX_VERSION) +
+        u2(nonce) +
+        u3(time_lock) +
+        u1(1) +
+        from_public_key +
+        signature +
+        u7le(from_amount_units) +
+        u1(len(WEBD_TOKEN_ID)) +
+        WEBD_TOKEN_ID +
+        to_section
+    )
+
+    tx_id = bytes_to_hex(double_sha256(serialized))
+    return {
+        'tx_id': tx_id,
+        'serialized_hex': bytes_to_hex(serialized),
+        'fee_webd': fee_webd,
+        'total_out_webd': round(total_out, 6),
+        'n_outputs': n,
+        'outputs': [{'address': addr, 'amount_webd': amt} for _, _, addr, amt in decoded],
     }
 
 
