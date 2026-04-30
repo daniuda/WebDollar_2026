@@ -7,7 +7,7 @@ import hashlib
 import os
 import struct
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 WEBD_UNITS = 10_000
 MIN_FEE_WEBD = 10
@@ -188,6 +188,21 @@ def build_signed_tx(
             'fee': fee_units,
         },
     }
+
+
+# ── signature verification ────────────────────────────────────────────────────
+
+def verify_signature(pubkey_hex: str, message: bytes, sig_hex: str) -> bool:
+    """Verify an Ed25519 signature. Returns True if valid."""
+    try:
+        pub = Ed25519PublicKey.from_public_bytes(hex_to_bytes(pubkey_hex))
+        pub.verify(hex_to_bytes(sig_hex), message)
+        return True
+    except Exception:
+        return False
+
+def get_public_key_bytes_from_hex(pubkey_hex: str) -> bytes:
+    return hex_to_bytes(pubkey_hex)
 
 
 # ── test self-check ────────────────────────────────────────────────────────────

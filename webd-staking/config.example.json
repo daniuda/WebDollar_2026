@@ -1,8 +1,11 @@
 {
   "pool": {
-    "address": "WEBD$ADRESA_POOL_AICI",
-    "private_key_hex": "CHEIA_PRIVATA_POOL_HEX_64_CHARS",
-    "public_key_hex": "CHEIA_PUBLICA_POOL_HEX_64_CHARS",
+    "staking_address": "WEBD$ADRESA_STAKING_DEDICATA",
+    "staking_private_key_hex": "CHEIA_PRIVATA_STAKING_HEX_64_CHARS",
+    "staking_public_key_hex": "CHEIA_PUBLICA_STAKING_HEX_64_CHARS",
+    "rewards_address": "WEBD$ADRESA_MINING_REWARDS",
+    "rewards_private_key_hex": "CHEIA_PRIVATA_REWARDS_HEX_64_CHARS",
+    "rewards_public_key_hex": "CHEIA_PUBLICA_REWARDS_HEX_64_CHARS",
     "fee_pct": 10,
     "node_url": "http://daniuda.ddns.net:8080",
     "broadcast_url": "http://localhost:3001/tx/broadcast"
@@ -10,7 +13,7 @@
   "staking": {
     "min_stake_webd": 100,
     "min_payout_webd": 10,
-    "balance_check_interval_sec": 300,
+    "deposit_scan_interval_sec": 30,
     "reward_check_interval_sec": 30,
     "history_days": 30
   },
