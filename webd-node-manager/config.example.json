@@ -1,0 +1,38 @@
+{
+  "node": {
+    "api_url": "http://localhost:3001",
+    "restart_cmd": "sudo systemctl restart webd-node-modern"
+  },
+  "pool": {
+    "api_url": "http://localhost:3001",
+    "restart_cmd": "sudo systemctl restart webd-node-modern"
+  },
+  "check_interval_sec": 30,
+  "history_days": 7,
+  "alerts": {
+    "telegram": {
+      "enabled": false,
+      "token": "BOT_TOKEN_AICI",
+      "chat_id": "CHAT_ID_AICI"
+    },
+    "email": {
+      "enabled": false,
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "username": "adresa@gmail.com",
+      "password": "app-password-gmail",
+      "from": "adresa@gmail.com",
+      "to": ["admin@example.com"]
+    }
+  },
+  "watchdog": {
+    "enabled": true,
+    "restart_on_failure": true,
+    "consecutive_failures_before_restart": 3,
+    "max_restarts_per_hour": 3
+  },
+  "dashboard": {
+    "host": "127.0.0.1",
+    "port": 3003
+  }
+}

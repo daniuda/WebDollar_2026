@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebDollar Node Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  header { background: #1a1d2e; border-bottom: 1px solid #2d3148; padding: 16px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 1.1rem; font-weight: 700; color: #a78bfa; letter-spacing: .03em; flex: 1; }
+  .status-badges { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .badge { display: flex; align-items: center; gap: 6px; background: #0f1117; border: 1px solid #2d3148; border-radius: 20px; padding: 5px 12px; font-size: .82rem; font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-up { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .dot-down { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .dot-unknown { background: #64748b; }
+  .uptime-label { font-size: .78rem; color: #64748b; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
+
+  .banner { background: #2d2010; border: 1px solid #92400e; border-radius: 8px; padding: 10px 16px; font-size: .85rem; color: #fbbf24; display: none; }
+  .banner.visible { display: block; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+  .card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 10px; padding: 16px; }
+  .card-label { font-size: .72rem; color: #64748b; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .card-value { font-size: 1.8rem; font-weight: 700; color: #e2e8f0; line-height: 1; }
+  .card-value.up { color: #22c55e; }
+  .card-value.down { color: #ef4444; }
+  .card-unit { font-size: .8rem; color: #64748b; margin-top: 4px; }
+
+  .section-title { font-size: .9rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; }
+
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .chart-box { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 10px; padding: 16px; }
+  .chart-box h3 { font-size: .82rem; color: #94a3b8; margin-bottom: 12px; }
+  .chart-box canvas { max-height: 180px; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-restart { background: #1e293b; border: 1px solid #ef4444; color: #ef4444; border-radius: 6px; padding: 8px 18px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+  .btn-restart:hover { background: #ef444422; }
+
+  .alerts-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  .alerts-table th { text-align: left; padding: 8px 12px; color: #64748b; font-weight: 600; border-bottom: 1px solid #2d3148; font-size: .75rem; text-transform: uppercase; }
+  .alerts-table td { padding: 9px 12px; border-bottom: 1px solid #1e293b; vertical-align: top; }
+  .alerts-table tr:hover td { background: #1e293b44; }
+  .level-badge { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: .72rem; font-weight: 700; }
+  .level-INFO { background: #0d3349; color: #38bdf8; }
+  .level-WARN { background: #2d2010; color: #fbbf24; }
+  .level-ERROR { background: #3b0f0f; color: #f87171; }
+  .level-CRITICAL { background: #5b0f2e; color: #fb7185; }
+  .no-data { color: #475569; font-style: italic; padding: 16px 0; }
+
+  .refresh-info { font-size: .75rem; color: #475569; text-align: right; }
+  #last-refresh { color: #64748b; }
+
+  @media (max-width: 480px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⛏ WebDollar Node Manager</h1>
+  <div class="status-badges">
+    <div class="badge">
+      <div class="dot dot-unknown" id="dot-node"></div>
+      <span>NODE</span>
+      <span id="lbl-node" style="color:#64748b">—</span>
+    </div>
+    <div class="badge">
+      <div class="dot dot-unknown" id="dot-pool"></div>
+      <span>POOL</span>
+      <span id="lbl-pool" style="color:#64748b">—</span>
+    </div>
+    <span class="uptime-label">Uptime: <span id="uptime-val">—</span></span>
+  </div>
+</header>
+
+<main>
+  <div class="banner" id="psutil-banner">
+    ⚠ <b>psutil</b> nu este instalat — metrici CPU/RAM indisponibile.
+    Instalează cu: <code>pip3 install psutil</code> și repornește managerul.
+  </div>
+
+  <div>
+    <div class="section-title">Metrici curente</div>
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">CPU</div>
+        <div class="card-value" id="val-cpu">—</div>
+        <div class="card-unit">%</div>
+      </div>
+      <div class="card">
+        <div class="card-label">RAM utilizat</div>
+        <div class="card-value" id="val-ram-mb">—</div>
+        <div class="card-unit">MB (<span id="val-ram-pct">—</span>%)</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Block Height</div>
+        <div class="card-value" id="val-height">—</div>
+        <div class="card-unit">bloc curent</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Pool Workers</div>
+        <div class="card-value" id="val-workers">—</div>
+        <div class="card-unit">mineri activi</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Pool Hashrate</div>
+        <div class="card-value" id="val-hashrate">—</div>
+        <div class="card-unit">H/s</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">Restart manual</div>
+    <div class="actions">
+      <button class="btn-restart" onclick="doRestart('node')">Restart NOD</button>
+      <button class="btn-restart" onclick="doRestart('pool')">Restart POOL</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">Grafice (ultimele 24h)</div>
+    <div class="charts-grid">
+      <div class="chart-box">
+        <h3>CPU % + RAM %</h3>
+        <canvas id="chart-cpu-ram"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Block Height</h3>
+        <canvas id="chart-height"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Pool Workers</h3>
+        <canvas id="chart-workers"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">Alerte recente</div>
+    <table class="alerts-table" id="alerts-table">
+      <thead>
+        <tr><th>Timp</th><th>Level</th><th>Mesaj</th></tr>
+      </thead>
+      <tbody id="alerts-body">
+        <tr><td colspan="3" class="no-data">Se încarcă...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="refresh-info">Auto-refresh la 30s &nbsp;·&nbsp; Ultima actualizare: <span id="last-refresh">—</span></div>
+</main>
+
+<script>
+const fmtTime = ts => new Date(ts * 1000).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
+const fmtDT   = ts => new Date(ts * 1000).toLocaleString('ro-RO');
+
+function fmtUptime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// ── charts ────────────────────────────────────────────────────────────────────
+const CHART_OPTS = {
+  responsive: true, maintainAspectRatio: true,
+  animation: false,
+  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#475569', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#1e293b' } },
+    y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#1e293b' } },
+  }
+};
+
+const chartCpuRam = new Chart(document.getElementById('chart-cpu-ram'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'CPU %', data: [], borderColor: '#a78bfa', backgroundColor: '#a78bfa22', tension: 0.3, borderWidth: 2, pointRadius: 0 },
+    { label: 'RAM %', data: [], borderColor: '#38bdf8', backgroundColor: '#38bdf822', tension: 0.3, borderWidth: 2, pointRadius: 0 },
+  ]},
+  options: { ...CHART_OPTS, scales: { ...CHART_OPTS.scales, y: { ...CHART_OPTS.scales.y, min: 0, max: 100 } } }
+});
+
+const chartHeight = new Chart(document.getElementById('chart-height'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Height', data: [], borderColor: '#22c55e', backgroundColor: '#22c55e22', tension: 0.3, borderWidth: 2, pointRadius: 0 },
+  ]},
+  options: CHART_OPTS,
+});
+
+const chartWorkers = new Chart(document.getElementById('chart-workers'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Workers', data: [], borderColor: '#fb923c', backgroundColor: '#fb923c22', tension: 0.3, borderWidth: 2, pointRadius: 0 },
+  ]},
+  options: { ...CHART_OPTS, scales: { ...CHART_OPTS.scales, y: { ...CHART_OPTS.scales.y, min: 0 } } }
+});
+
+function updateCharts(history) {
+  const labels = history.map(r => fmtTime(r.ts));
+  chartCpuRam.data.labels = labels;
+  chartCpuRam.data.datasets[0].data = history.map(r => r.cpu_pct >= 0 ? r.cpu_pct : null);
+  chartCpuRam.data.datasets[1].data = history.map(r => r.ram_pct >= 0 ? r.ram_pct : null);
+  chartCpuRam.update('none');
+
+  chartHeight.data.labels = labels;
+  chartHeight.data.datasets[0].data = history.map(r => r.node_height >= 0 ? r.node_height : null);
+  chartHeight.update('none');
+
+  chartWorkers.data.labels = labels;
+  chartWorkers.data.datasets[0].data = history.map(r => r.pool_workers >= 0 ? r.pool_workers : null);
+  chartWorkers.update('none');
+}
+
+// ── status update ─────────────────────────────────────────────────────────────
+function setDot(id, status) {
+  const el = document.getElementById(id);
+  el.className = 'dot ' + (status === 'up' ? 'dot-up' : status === 'down' ? 'dot-down' : 'dot-unknown');
+}
+
+function setLbl(id, status) {
+  const el = document.getElementById(id);
+  el.textContent = status === 'up' ? 'UP' : status === 'down' ? 'DOWN' : '—';
+  el.style.color = status === 'up' ? '#22c55e' : status === 'down' ? '#ef4444' : '#64748b';
+}
+
+function setText(id, val, fallback = '—') {
+  document.getElementById(id).textContent = (val === -1 || val === null || val === undefined) ? fallback : val;
+}
+
+function applyStatus(s) {
+  setDot('dot-node', s.node_status);
+  setLbl('lbl-node', s.node_status);
+  setDot('dot-pool', s.pool_status);
+  setLbl('lbl-pool', s.pool_status);
+
+  setText('val-cpu', s.cpu_pct >= 0 ? s.cpu_pct.toFixed(1) : '—');
+  setText('val-ram-mb', s.ram_mb >= 0 ? s.ram_mb : '—');
+  setText('val-ram-pct', s.ram_pct >= 0 ? s.ram_pct.toFixed(1) : '—');
+  setText('val-height', s.node_height >= 0 ? s.node_height.toLocaleString() : '—');
+  setText('val-workers', s.pool_workers >= 0 ? s.pool_workers : '—');
+  setText('val-hashrate', s.pool_hashrate >= 0 ? s.pool_hashrate.toLocaleString() : '—');
+
+  if (s.uptime_sec !== undefined) {
+    document.getElementById('uptime-val').textContent = fmtUptime(s.uptime_sec);
+  }
+
+  if (!s.has_psutil) {
+    document.getElementById('psutil-banner').classList.add('visible');
+  }
+
+  document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString('ro-RO');
+}
+
+// ── alerts table ──────────────────────────────────────────────────────────────
+function renderAlerts(alerts) {
+  const tbody = document.getElementById('alerts-body');
+  if (!alerts.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="no-data">Nicio alertă înregistrată.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = alerts.map(a => `
+    <tr>
+      <td style="white-space:nowrap;color:#64748b">${fmtDT(a.ts)}</td>
+      <td><span class="level-badge level-${a.level}">${a.level}</span></td>
+      <td>${escHtml(a.message)}</td>
+    </tr>`).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── restart ───────────────────────────────────────────────────────────────────
+async function doRestart(service) {
+  if (!confirm(`Confirmi restartul ${service.toUpperCase()}?`)) return;
+  try {
+    const r = await fetch(`/api/restart/${service}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) alert(`✓ ${service} restartat cu succes.`);
+    else alert(`✗ Eroare restart: ${d.error}`);
+  } catch (e) {
+    alert(`✗ Eroare conexiune: ${e}`);
+  }
+}
+
+// ── fetch & refresh ───────────────────────────────────────────────────────────
+async function refresh() {
+  try {
+    const [status, history, alerts] = await Promise.all([
+      fetch('/api/status').then(r => r.json()),
+      fetch('/api/history?hours=24').then(r => r.json()),
+      fetch('/api/alerts?limit=50').then(r => r.json()),
+    ]);
+    applyStatus(status);
+    updateCharts(history);
+    renderAlerts(alerts);
+  } catch (e) {
+    console.error('Refresh error:', e);
+    document.getElementById('last-refresh').textContent = 'eroare conexiune';
+  }
+}
+
+refresh();
+setInterval(refresh, 30_000);
+</script>
+</body>
+</html>
