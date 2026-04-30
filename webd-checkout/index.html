@@ -36,12 +36,73 @@
             <h1 id="pay-title">Plată WebDollar</h1>
             <div id="amount-display" class="amount-badge"></div>
 
-            <div id="qr-section">
-                <div id="qrcode"></div>
-                <p id="qr-address" class="address-text"></p>
+            <!-- Tab-uri metode de plată -->
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="qr">📱 QR</button>
+                <button class="tab-btn" data-tab="wdexp">⚡ WDExperience</button>
+                <button class="tab-btn" data-tab="webdollar">🌐 webdollar.io</button>
+                <button class="tab-btn" data-tab="windows">🖥️ Windows</button>
             </div>
 
-            <!-- Status -->
+            <!-- Tab 1: QR / Mobil -->
+            <div id="tab-qr" class="tab-panel">
+                <div id="qrcode"></div>
+                <p id="qr-address" class="address-text"></p>
+                <p class="hint">Scanează cu aplicația WebDollar de pe telefon.</p>
+            </div>
+
+            <!-- Tab 2: WDExperience (browser, cheie privată) -->
+            <div id="tab-wdexp" class="tab-panel" style="display:none;">
+                <p class="tab-desc">Deschide WDExperience în browser. Plata va fi pre-completată — doar apasă butonul de confirmare.</p>
+                <a id="wdexp-link" href="#" target="_blank" class="pay-btn">
+                    Deschide WDExperience →
+                </a>
+                <p class="hint" style="margin-top:12px;">Vei fi redirectat la <strong>wdexperience</strong> unde trebuie să ai fișierul <em>.webd</em> importat.</p>
+            </div>
+
+            <!-- Tab 3: webdollar.io -->
+            <div id="tab-webdollar" class="tab-panel" style="display:none;">
+                <p class="tab-desc">Trimite manual din webdollar.io:</p>
+                <div class="copy-row">
+                    <span class="copy-label">Adresă:</span>
+                    <span id="wdio-address" class="copy-value"></span>
+                    <button class="copy-btn" data-copy="wdio-address">Copiază</button>
+                </div>
+                <div class="copy-row">
+                    <span class="copy-label">Sumă:</span>
+                    <span id="wdio-amount" class="copy-value"></span>
+                    <button class="copy-btn" data-copy="wdio-amount">Copiază</button>
+                </div>
+                <ol class="steps">
+                    <li>Deschide <a href="https://webdollar.io" target="_blank">webdollar.io</a> în browser.</li>
+                    <li>Mergi la secțiunea <strong>Send / Transfer</strong>.</li>
+                    <li>Introdu adresa și suma de mai sus.</li>
+                    <li>Confirmă tranzacția.</li>
+                </ol>
+            </div>
+
+            <!-- Tab 4: Windows app -->
+            <div id="tab-windows" class="tab-panel" style="display:none;">
+                <p class="tab-desc">Trimite din aplicația Windows WebDollar:</p>
+                <div class="copy-row">
+                    <span class="copy-label">Adresă:</span>
+                    <span id="win-address" class="copy-value"></span>
+                    <button class="copy-btn" data-copy="win-address">Copiează</button>
+                </div>
+                <div class="copy-row">
+                    <span class="copy-label">Sumă:</span>
+                    <span id="win-amount" class="copy-value"></span>
+                    <button class="copy-btn" data-copy="win-amount">Copiează</button>
+                </div>
+                <ol class="steps">
+                    <li>Deschide aplicația <strong>WebDollar Windows Miner</strong>.</li>
+                    <li>Mergi la tab-ul <strong>Transfer</strong>.</li>
+                    <li>Completează adresa și suma de mai sus.</li>
+                    <li>Apasă <strong>Trimite</strong>.</li>
+                </ol>
+            </div>
+
+            <!-- Status plată (comun tuturor tab-urilor) -->
             <div id="status-box" class="status-box status-waiting">
                 <div class="status-icon">
                     <div id="spinner" class="spinner"></div>

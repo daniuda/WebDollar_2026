@@ -1,12 +1,13 @@
 // webd-checkout main.js
 // Detectează automat dacă e în modul merchant (fără params) sau checkout activ (cu params).
 
-const API_BASE = '';  // relativ — server.js servește și frontend-ul
+const API_BASE = '';  // relativ — server.py servește și frontend-ul
+const WDEXP_BASE = 'https://webdollar.cloudns.nz/wdexperience/mine';
 
 (function () {
-  const params  = new URLSearchParams(window.location.search);
-  const address = params.get('to');
-  const amount  = parseFloat(params.get('amount'));
+  const params   = new URLSearchParams(window.location.search);
+  const address  = params.get('to');
+  const amount   = parseFloat(params.get('amount'));
   const redirect = params.get('redirect') || null;
   const timeout  = Number(params.get('timeout')) || 0;
 
@@ -51,10 +52,38 @@ async function startCheckout(address, amount, redirect, timeoutOverride) {
   document.getElementById('checkout-view').style.display = 'block';
 
   document.getElementById('amount-display').textContent = `${amount} WEBD`;
-  document.getElementById('qr-address').textContent = address;
 
-  // Generează QR
+  // Tab 1: QR
+  document.getElementById('qr-address').textContent = address;
   generateQR(address, amount);
+
+  // Tab 2: WDExperience deep link
+  const wdexpUrl = `${WDEXP_BASE}?pay-to=${encodeURIComponent(address)}&pay-amount=${amount}`;
+  document.getElementById('wdexp-link').href = wdexpUrl;
+
+  // Tab 3 & 4: adresă + sumă pentru copiere
+  ['wdio-address', 'win-address'].forEach(id => {
+    document.getElementById(id).textContent = address;
+  });
+  ['wdio-amount', 'win-amount'].forEach(id => {
+    document.getElementById(id).textContent = `${amount} WEBD`;
+  });
+
+  // Wire up tab switching
+  initTabs();
+
+  // Wire up copy buttons
+  document.querySelectorAll('.copy-btn[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-copy');
+      const text = document.getElementById(targetId)?.textContent || '';
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copiat!';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
+      });
+    });
+  });
 
   // Creează sesiune la backend
   let sessionId = null;
@@ -63,7 +92,7 @@ async function startCheckout(address, amount, redirect, timeoutOverride) {
   try {
     const body = { address, amount };
     if (timeoutOverride) body.timeout = timeoutOverride;
-    const res  = await fetch(`${API_BASE}/api/session`, {
+    const res = await fetch(`${API_BASE}/api/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -82,10 +111,27 @@ async function startCheckout(address, amount, redirect, timeoutOverride) {
   if (sessionId) {
     pollStatus(sessionId, expiresAt, redirect);
   } else {
-    // Fără backend: rămâne în stare statică de așteptare
     setStatus('waiting');
   }
 }
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+
+function initTabs() {
+  const buttons = document.querySelectorAll('.tab-btn');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab');
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.style.display = panel.id === `tab-${tab}` ? 'block' : 'none';
+      });
+    });
+  });
+}
+
+// ── QR ───────────────────────────────────────────────────────────────────────
 
 function generateQR(address, amount) {
   const qrText = `webd:${address}?amount=${amount}`;
@@ -97,7 +143,7 @@ function generateQR(address, amount) {
   qrDiv.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2 });
 }
 
-// ── Polling ──────────────────────────────────────────────────────────────────
+// ── Polling ───────────────────────────────────────────────────────────────────
 
 let _pollTimer = null;
 
@@ -122,15 +168,15 @@ async function pollStatus(sessionId, expiresAt, redirect) {
   _pollTimer = setTimeout(() => pollStatus(sessionId, expiresAt, redirect), 10_000);
 }
 
-// ── UI helpers ───────────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────────────────────
 
 function setStatus(status, txId) {
-  const box      = document.getElementById('status-box');
-  const text     = document.getElementById('status-text');
-  const spinner  = document.getElementById('spinner');
-  const check    = document.getElementById('checkmark');
-  const cross    = document.getElementById('crossmark');
-  const txBox    = document.getElementById('txid-box');
+  const box     = document.getElementById('status-box');
+  const text    = document.getElementById('status-text');
+  const spinner = document.getElementById('spinner');
+  const check   = document.getElementById('checkmark');
+  const cross   = document.getElementById('crossmark');
+  const txBox   = document.getElementById('txid-box');
 
   box.className = `status-box status-${status}`;
   spinner.style.display = 'none';
@@ -167,7 +213,7 @@ let _countdownTimer = null;
 function startCountdown(expiresAt) {
   const el = document.getElementById('countdown');
   function tick() {
-    const ms = Math.max(0, expiresAt - Date.now());
+    const ms  = Math.max(0, expiresAt - Date.now());
     const min = Math.floor(ms / 60_000);
     const sec = Math.floor((ms % 60_000) / 1000);
     el.textContent = ms > 0
