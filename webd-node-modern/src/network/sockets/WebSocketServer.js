@@ -6,14 +6,26 @@ import { PeerManager } from '../peers/index.js';
 import { MessageHandler } from '../messages/MessageHandler.js';
 import { Handshake } from '../messages/Handshake.js';
 
-export class WebDollarWebSocketServer {
-  constructor({ port = 8080 } = {}) {
+export class WebSocketServer {
+  constructor(port = 8080) {
     this.port = port;
-    this.server = new WSS({ port });
+    this.server = null;
     this.peerManager = new PeerManager();
     this.messageHandler = new MessageHandler();
+  }
+
+  start(port = null) {
+    if (port) this.port = port;
+    this.server = new WSS({ port: this.port });
+    this.server.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        Logger.warn(`Port WS ${this.port} este deja folosit; continui fără server WS local.`);
+        return;
+      }
+      Logger.error('Eroare server WS:', err);
+    });
     this.server.on('connection', (ws, req) => this.handleConnection(ws, req));
-    Logger.info(`WebDollar WebSocketServer ascultă pe portul ${port}`);
+    Logger.info(`WebDollar WebSocketServer ascultă pe portul ${this.port}`);
   }
 
   handleConnection(ws, req) {
@@ -49,5 +61,20 @@ export class WebDollarWebSocketServer {
       data = msg; // fallback binar
     }
     eventBus.emit('ws:message', { ws, data });
+  }
+
+  broadcastTx(txBuffer) {
+    if (!this.server) return 0;
+    const payload = JSON.stringify({
+      type: 'transactions/new-pending-transaction',
+      data: { buffer: Array.from(txBuffer) },
+    });
+    let sent = 0;
+    for (const client of this.server.clients) {
+      if (client.readyState === 1 /* OPEN */) {
+        try { client.send(payload); sent++; } catch (_) {}
+      }
+    }
+    return sent;
   }
 }

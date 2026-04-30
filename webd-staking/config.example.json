@@ -1,0 +1,21 @@
+{
+  "pool": {
+    "address": "WEBD$ADRESA_POOL_AICI",
+    "private_key_hex": "CHEIA_PRIVATA_POOL_HEX_64_CHARS",
+    "public_key_hex": "CHEIA_PUBLICA_POOL_HEX_64_CHARS",
+    "fee_pct": 10,
+    "node_url": "http://daniuda.ddns.net:8080",
+    "broadcast_url": "http://localhost:3001/tx/broadcast"
+  },
+  "staking": {
+    "min_stake_webd": 100,
+    "min_payout_webd": 10,
+    "balance_check_interval_sec": 300,
+    "reward_check_interval_sec": 30,
+    "history_days": 30
+  },
+  "dashboard": {
+    "host": "127.0.0.1",
+    "port": 3004
+  }
+}
