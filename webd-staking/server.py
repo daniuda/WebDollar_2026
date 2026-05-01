@@ -9,7 +9,7 @@ Scannerul de blocuri detectează automat:
 
 Requires: pip3 install cryptography
 """
-import json, os, secrets, sqlite3, sys, threading, time
+import json, os, secrets, shutil, sqlite3, sys, threading, time
 import urllib.request, urllib.error, ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -51,9 +51,12 @@ POOL_FEE_PCT  = float(pool_cfg.get('fee_pct', 10)) / 100.0
 
 MIN_STAKE     = float(staking_cfg.get('min_stake_webd', 100))
 MIN_PAYOUT    = float(staking_cfg.get('min_payout_webd', 10))
-SCAN_INTERVAL = int(staking_cfg.get('scan_interval_sec', 30))
-HISTORY_DAYS  = int(staking_cfg.get('history_days', 30))
-CHALLENGE_TTL = 300
+SCAN_INTERVAL    = int(staking_cfg.get('scan_interval_sec', 30))
+HISTORY_DAYS     = int(staking_cfg.get('history_days', 30))
+BACKUP_INTERVAL  = int(staking_cfg.get('backup_interval_sec', 3600))   # backup la fiecare oră
+BACKUP_KEEP      = int(staking_cfg.get('backup_keep', 168))             # păstrează 7 zile × 24h
+BACKUP_DIR       = BASE_DIR / 'backups'
+CHALLENGE_TTL    = 300
 
 # ── database ───────────────────────────────────────────────────────────────────
 _db_lock = threading.Lock()
@@ -268,6 +271,88 @@ def db_prune():
     with _db_lock, _conn() as c:
         c.execute('DELETE FROM reward_events WHERE ts < ?', (cutoff,))
         c.commit()
+
+def db_export_ledger() -> dict:
+    """Export complet al ledger-ului — folosit pentru backup și audit."""
+    now = int(time.time())
+    with _db_lock, _conn() as c:
+        stakers    = [dict(r) for r in c.execute(
+            'SELECT * FROM user_balances ORDER BY deposited_total DESC').fetchall()]
+        deposits   = [dict(r) for r in c.execute(
+            'SELECT * FROM deposits ORDER BY ts DESC').fetchall()]
+        withdrawals = [dict(r) for r in c.execute(
+            'SELECT * FROM withdrawals ORDER BY ts DESC').fetchall()]
+        rewards    = [dict(r) for r in c.execute(
+            'SELECT * FROM reward_events ORDER BY ts DESC').fetchall()]
+        scan_h     = c.execute("SELECT value FROM scan_state WHERE key='last_height'").fetchone()
+
+    total_deposited  = sum(s.get('deposited_total', 0) for s in stakers)
+    total_rewards    = sum(s.get('rewards_total', 0) for s in stakers)
+    total_withdrawn  = sum(s.get('withdrawn_total', 0) for s in stakers)
+    total_owed       = sum(
+        s.get('deposited_total', 0) + s.get('rewards_total', 0) - s.get('withdrawn_total', 0)
+        for s in stakers)
+
+    for s in stakers:
+        s['available'] = round(
+            s.get('deposited_total', 0) + s.get('rewards_total', 0) - s.get('withdrawn_total', 0), 4)
+        s['rewards_pending'] = round(
+            s.get('rewards_total', 0) - s.get('rewards_paid', 0), 4)
+
+    return {
+        'generated_at':      now,
+        'generated_at_iso':  time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)),
+        'pool_address':      POOL_ADDRESS,
+        'last_scanned_height': int(scan_h['value']) if scan_h else 0,
+        'summary': {
+            'total_stakers':    len(stakers),
+            'total_deposited':  round(total_deposited, 4),
+            'total_rewards':    round(total_rewards, 4),
+            'total_withdrawn':  round(total_withdrawn, 4),
+            'total_owed':       round(total_owed, 4),
+            'reward_events':    len(rewards),
+        },
+        'stakers':     stakers,
+        'deposits':    deposits,
+        'withdrawals': withdrawals,
+        'reward_events': rewards,
+    }
+
+# ── Backup loop ────────────────────────────────────────────────────────────────
+def backup_loop():
+    """Backup automat al DB-ului la fiecare BACKUP_INTERVAL secunde."""
+    BACKUP_DIR.mkdir(exist_ok=True)
+    # Backup imediat la pornire
+    _do_backup()
+    while True:
+        time.sleep(BACKUP_INTERVAL)
+        _do_backup()
+
+def _do_backup():
+    try:
+        BACKUP_DIR.mkdir(exist_ok=True)
+        ts  = time.strftime('%Y%m%d_%H%M%S', time.gmtime())
+        dst = BACKUP_DIR / f'staking_{ts}.db'
+        with _db_lock:
+            shutil.copy2(str(DB_PATH), str(dst))
+
+        # Export JSON paralel pentru lizibilitate
+        json_dst = BACKUP_DIR / f'ledger_{ts}.json'
+        ledger   = db_export_ledger()
+        json_dst.write_text(json.dumps(ledger, indent=2, default=str), encoding='utf-8')
+
+        # Rotire: șterge backup-uri vechi (păstrează ultimele BACKUP_KEEP)
+        dbs   = sorted(BACKUP_DIR.glob('staking_*.db'))
+        jsons = sorted(BACKUP_DIR.glob('ledger_*.json'))
+        for old in dbs[:-BACKUP_KEEP]:
+            old.unlink(missing_ok=True)
+        for old in jsons[:-BACKUP_KEEP]:
+            old.unlink(missing_ok=True)
+
+        print(f'[BCK] Backup: {dst.name} | stakers={ledger["summary"]["total_stakers"]}'
+              f' owed={ledger["summary"]["total_owed"]:.2f} WEBD', flush=True)
+    except Exception as e:
+        print(f'[BCK ERROR] {e}', flush=True)
 
 # ── HTTP helpers ───────────────────────────────────────────────────────────────
 _insecure_ctx = ssl.create_default_context()
@@ -583,6 +668,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith('/api/withdrawals/'):
             self._json(db_get_withdrawals(path[len('/api/withdrawals/'):]))
 
+        elif path == '/api/export':
+            self._json(db_export_ledger())
+
         elif path == '/api/withdraw/challenge':
             addr   = params.get('address', '').strip()
             amount = float(params.get('amount', 0) or 0)
@@ -637,6 +725,7 @@ if __name__ == '__main__':
     _migrate_db()
 
     threading.Thread(target=block_scan_loop, daemon=True, name='block-scan').start()
+    threading.Thread(target=backup_loop,    daemon=True, name='backup').start()
 
     host = cfg.get('dashboard', {}).get('host', '127.0.0.1')
     port = int(cfg.get('dashboard', {}).get('port', 3004))
