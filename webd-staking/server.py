@@ -14,6 +14,10 @@ import urllib.request, urllib.error, ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 sys.path.insert(0, str(Path(__file__).parent))
 try:
     from tx_builder import build_signed_tx, build_signed_tx_multi, verify_signature, PAYOUT_FEE_PCT
