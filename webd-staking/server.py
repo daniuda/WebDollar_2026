@@ -47,6 +47,17 @@ BROADCAST_URL = pool_cfg.get('broadcast_url', 'http://localhost:3001/tx/broadcas
 POOL_ADDRESS  = pool_cfg['address']
 POOL_PRIVKEY  = pool_cfg['private_key_hex']
 POOL_PUBKEY   = pool_cfg['public_key_hex']
+
+def _decode_pool_addr_hex(wif):
+    import base64
+    norm = wif.strip().replace('$', '/').replace('#', 'O').replace('@', 'l')
+    pad = len(norm) % 4
+    if pad:
+        norm += '=' * (4 - pad)
+    raw = base64.b64decode(norm)
+    return raw[5:25].hex() if len(raw) >= 25 else ''
+
+POOL_UNENCODED_HEX = _decode_pool_addr_hex(POOL_ADDRESS)
 POOL_FEE_PCT  = float(pool_cfg.get('fee_pct', 10)) / 100.0
 
 MIN_STAKE     = float(staking_cfg.get('min_stake_webd', 100))
@@ -380,12 +391,40 @@ def _post_json(url: str, data: dict, timeout=10):
             return json.loads(r.read().decode('utf-8'))
 
 def fetch_height() -> int:
-    data = _get_json(f'{NODE_URL}/height')
-    return int(data.get('height', data) if isinstance(data, dict) else data)
+    try:
+        data = _get_json(NODE_URL + '/chain')
+        return int(data['height'])
+    except Exception:
+        data = _get_json(NODE_URL + '/height')
+        return int(data.get('height', data) if isinstance(data, dict) else data)
+
+def _norm_tx(tx: dict) -> dict:
+    """Normalizeaza tx din format explorator (from/to ca liste) la format flat."""
+    result = dict(tx)
+    for field in ('from', 'to'):
+        v = tx.get(field)
+        if isinstance(v, list) and v:
+            result[field] = v[0]  # primul element din lista
+        elif not isinstance(v, dict):
+            result[field] = {}
+    return result
 
 def fetch_block(height: int) -> dict:
-    data = _get_json(f'{NODE_URL}/block/{height}')
-    return data if isinstance(data, dict) else {}
+    data = _get_json(NODE_URL + '/block/' + str(height))
+    if not isinstance(data, dict):
+        return {}
+    inner = data.get('data', {})
+    if isinstance(inner, dict) and 'data' in inner:
+        block_data = inner.get('data', {})
+        raw_txs = block_data.get('transactions') or []
+        return {
+            'height':       data.get('height', height),
+            'hash':         data.get('hash', ''),
+            'minerAddress': block_data.get('minerAddress', '') or block_data.get('posMinerAddress', ''),
+            'reward':       inner.get('reward', 0),
+            'transactions': [_norm_tx(t) for t in raw_txs if isinstance(t, dict)],
+        }
+    return data
 
 def parse_tx_amount(tx: dict) -> float:
     raw = (tx.get('amount') or (tx.get('to') or {}).get('amount') or tx.get('value') or 0)
@@ -442,7 +481,7 @@ def _scan_block(height: int):
     # Verifică câmpuri explicite de recompensă din structura blocului
     miner = (block.get('miner') or block.get('minerAddress') or
              block.get('minedBy') or '').strip()
-    if miner == POOL_ADDRESS:
+    if miner in (POOL_ADDRESS, POOL_UNENCODED_HEX):
         for key in ('reward', 'mining_reward', 'blockReward', 'coinbase', 'miningReward'):
             v = block.get(key)
             if v:

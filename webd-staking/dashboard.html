@@ -364,7 +364,7 @@ async function getChallenge() {
   btn.disabled = true;
   btn.textContent = 'Se generează...';
   try {
-    const r = await fetch(`/api/withdraw/challenge?address=${encodeURIComponent(address)}&amount=${amount}`).then(r => r.json());
+    const r = await fetch(`api/withdraw/challenge?address=${encodeURIComponent(address)}&amount=${amount}`).then(r => r.json());
     if (r.error) { showMsg(msg, r.error, 'err'); return; }
 
     _wdState = { nonce: r.nonce, message: r.message, pubkeyHex: null, sigHex: null };
@@ -380,37 +380,57 @@ async function getChallenge() {
   btn.textContent = 'Generează challenge';
 }
 
+function _hexToBytes(hex) {
+  const b = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < b.length; i++) b[i] = parseInt(hex.slice(i*2, i*2+2), 16);
+  return b;
+}
+
+function _extractWalletKeys(text) {
+  try {
+    const data = JSON.parse(text.trim());
+    const candidates = [data, ...Object.values(data || {})];
+    for (const c of candidates) {
+      if (c && c.privateKey && c.publicKey && typeof c.privateKey === 'string' && c.privateKey.length === 64)
+        return { seed: _hexToBytes(c.privateKey), pubkey: _hexToBytes(c.publicKey) };
+    }
+  } catch {}
+  return null;
+}
+
 async function handleWEBDFile(file) {
   const msg = 'wd-step2-msg';
   if (!file) return;
   if (!_wdState.nonce) { showMsg(msg, 'Generează challenge mai întâi (Pasul 1).', 'err'); return; }
 
   try {
-    const ab  = await file.arrayBuffer();
-    const buf = new Uint8Array(ab);
+    let seed, pubkey;
 
-    // .webd format: 69 bytes = [0x80] + seed(32) + pubkey(32) + checksum(4)
-    if (buf.length !== 69 || buf[0] !== 0x80) {
-      showMsg(msg, 'Fișier .webd invalid (format nerecunoscut).', 'err'); return;
+    // Format 1: JSON (webdollar.io) — {version:"0.1", address, publicKey, privateKey}
+    const text = await file.text();
+    const jsonKeys = _extractWalletKeys(text);
+    if (jsonKeys) {
+      seed = jsonKeys.seed; pubkey = jsonKeys.pubkey;
+    } else {
+      // Format 2: binar 69 bytes = [0x80] + seed(32) + pubkey(32) + checksum(4)
+      const ab  = await file.arrayBuffer();
+      const buf = new Uint8Array(ab);
+      if (buf.length !== 69 || buf[0] !== 0x80) {
+        showMsg(msg, 'Fișier .webd invalid — acceptat: JSON (webdollar.io) sau binar legacy.', 'err'); return;
+      }
+      seed = buf.slice(1, 33); pubkey = buf.slice(33, 65);
     }
-    const seed   = buf.slice(1, 33);
-    const pubkey = buf.slice(33, 65);
 
-    // Import private key via WebCrypto
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw', seed, { name: 'Ed25519' }, false, ['sign']
-    );
+    const cryptoKey = await crypto.subtle.importKey('raw', seed, { name: 'Ed25519' }, false, ['sign']);
     const msgBytes  = new TextEncoder().encode(_wdState.message);
     const sigBuffer = await crypto.subtle.sign('Ed25519', cryptoKey, msgBytes);
 
     _wdState.pubkeyHex = Array.from(pubkey).map(b => b.toString(16).padStart(2,'0')).join('');
     _wdState.sigHex    = Array.from(new Uint8Array(sigBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
 
-    // Unlock step 3
     const step3 = document.getElementById('wd-step3');
-    step3.style.opacity = '1';
-    step3.style.pointerEvents = 'auto';
-    showMsg(msg, `Semnatură generată cu succes. Cheie publică: ${_wdState.pubkeyHex.slice(0,16)}...`, 'ok');
+    step3.style.opacity = '1'; step3.style.pointerEvents = 'auto';
+    showMsg(msg, 'Semnătură generată. Continuă cu Pasul 3.', 'ok');
   } catch(e) { showMsg(msg, 'Eroare la semnare: ' + e, 'err'); }
 }
 
@@ -422,7 +442,7 @@ async function submitWithdrawal() {
   btn.disabled = true;
   btn.textContent = 'Se trimite...';
   try {
-    const r = await fetch('/api/withdraw', {
+    const r = await fetch('api/withdraw', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -453,7 +473,7 @@ async function submitWithdrawal() {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const s = await fetch('/api/stats').then(r => r.json());
+    const s = await fetch('api/stats').then(r => r.json());
     document.getElementById('s-total-stake').textContent = fmtWEBD(s.total_staked);
     document.getElementById('s-stakers').textContent     = s.active_stakers ?? '—';
     document.getElementById('s-fee').textContent         = s.pool_fee_pct ?? '—';
@@ -475,7 +495,7 @@ async function lookupBalance() {
   if (!addr) return;
 
   try {
-    const r = await fetch(`/api/balance/${encodeURIComponent(addr)}`).then(r => r.json());
+    const r = await fetch(`api/balance/${encodeURIComponent(addr)}`).then(r => r.json());
     if (r.error) {
       el.innerHTML = `<div class="msg err" style="display:block">${escHtml(r.error)}</div>`;
     } else {
@@ -524,8 +544,8 @@ async function lookupHistory() {
 
   try {
     const [deposits, withdrawals] = await Promise.all([
-      fetch(`/api/deposits/${encodeURIComponent(addr)}`).then(r => r.json()),
-      fetch(`/api/withdrawals/${encodeURIComponent(addr)}`).then(r => r.json()),
+      fetch(`api/deposits/${encodeURIComponent(addr)}`).then(r => r.json()),
+      fetch(`api/withdrawals/${encodeURIComponent(addr)}`).then(r => r.json()),
     ]);
 
     let html = '';
@@ -567,7 +587,7 @@ async function lookupHistory() {
 // ── Stakers ────────────────────────────────────────────────────────────────────
 async function loadStakers() {
   try {
-    const rows = await fetch('/api/stakers').then(r => r.json());
+    const rows = await fetch('api/stakers').then(r => r.json());
     const tbody = document.getElementById('stakers-body');
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="no-data">Niciun staker înregistrat.</td></tr>';
@@ -589,7 +609,7 @@ async function loadStakers() {
 // ── Rewards ────────────────────────────────────────────────────────────────────
 async function loadRewards() {
   try {
-    const rows = await fetch('/api/rewards').then(r => r.json());
+    const rows = await fetch('api/rewards').then(r => r.json());
     const tbody = document.getElementById('rewards-body');
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="no-data">Nicio recompensă înregistrată.</td></tr>';
