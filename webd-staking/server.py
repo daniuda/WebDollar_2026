@@ -457,9 +457,11 @@ def broadcast_tx(tx_hex: str) -> dict:
         return {'result': False, 'error': str(e)}
 
 # Socket.io node URLs to try for direct broadcast (socket.io v2 protocol)
-_SIO_NODES = [
-    NODE_LOCAL_URL,                     # VPS local: http://127.0.0.1:8081
-    'http://daniuda.ddns.net:8080',     # pool acasă, conectat la rețeaua principală
+# Ordinea contează: primul nod care acceptă tx câștigă.
+# Configurabil prin pool.broadcast_nodes în config.json.
+_SIO_NODES = pool_cfg.get('broadcast_nodes') or [
+    'http://daniuda.ddns.net:8080',     # primar: nod acasă, peers conectați
+    NODE_LOCAL_URL,                     # fallback: VPS local http://127.0.0.1:8081
 ]
 
 def _check_tx_in_pending(tx_id: str, node_url: str) -> bool:
