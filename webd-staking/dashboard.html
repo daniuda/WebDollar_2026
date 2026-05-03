@@ -123,11 +123,21 @@
   <div>
     <div class="section-title">Pool Stats</div>
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Total staked</div>
-        <div class="stat-value" id="s-total-stake">—</div>
-        <div class="stat-unit">WEBD</div>
+
+      <!-- Balanță on-chain (de minat) -->
+      <div class="stat-card" style="border-color:#a78bfa44">
+        <div class="stat-label">Balanță on-chain</div>
+        <div class="stat-value" id="s-mining-bal" style="color:#a78bfa">—</div>
+        <div class="stat-unit">WEBD &nbsp;<span style="color:#4ade80;font-size:.68rem">● minează activ</span></div>
       </div>
+
+      <!-- Disponibil retragere (DB intern) -->
+      <div class="stat-card">
+        <div class="stat-label">Disponibil retragere</div>
+        <div class="stat-value" id="s-total-stake">—</div>
+        <div class="stat-unit">WEBD &nbsp;<span id="s-pending-note" style="color:#fb923c;font-size:.68rem;display:none"></span></div>
+      </div>
+
       <div class="stat-card">
         <div class="stat-label">Stakers activi</div>
         <div class="stat-value" id="s-stakers">—</div>
@@ -147,11 +157,6 @@
         <div class="stat-label">Bloc curent</div>
         <div class="stat-value" id="s-block-height" style="font-size:1.1rem">—</div>
         <div class="stat-unit" id="s-synced">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Balanță mining</div>
-        <div class="stat-value" id="s-mining-bal" style="font-size:1.1rem">—</div>
-        <div class="stat-unit">WEBD</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Blocuri găsite</div>
@@ -618,6 +623,15 @@ async function loadStats() {
     }
     if (n.mining_balance != null) {
       document.getElementById('s-mining-bal').textContent = fmtWEBD(n.mining_balance);
+      // Diferenta blockchain vs DB = retrageri trimise dar inca neconfirmate
+      const pending = Math.round((n.mining_balance - (s.total_staked || 0)) * 10000) / 10000;
+      const noteEl  = document.getElementById('s-pending-note');
+      if (pending > 0.0001) {
+        noteEl.textContent = pending.toFixed(4) + ' WEBD in asteptare confirmare';
+        noteEl.style.display = 'inline';
+      } else {
+        noteEl.style.display = 'none';
+      }
     }
     document.getElementById('s-blocks-found').textContent = n.pool_blocks_found ?? '—';
     if (n.pool_rewards_total) {
