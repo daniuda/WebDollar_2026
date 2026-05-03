@@ -138,6 +138,26 @@
         <div class="stat-value" id="s-apy">—</div>
         <div class="stat-unit">% / an</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Bloc curent</div>
+        <div class="stat-value" id="s-block-height" style="font-size:1.1rem">—</div>
+        <div class="stat-unit" id="s-synced">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Balanță mining</div>
+        <div class="stat-value" id="s-mining-bal" style="font-size:1.1rem">—</div>
+        <div class="stat-unit">WEBD</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Blocuri găsite</div>
+        <div class="stat-value" id="s-blocks-found" style="font-size:1.1rem">—</div>
+        <div class="stat-unit" id="s-rewards-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Șansa / bloc</div>
+        <div class="stat-value" id="s-blocks-chance" style="font-size:1.1rem">—</div>
+        <div class="stat-unit" id="s-est-days">—</div>
+      </div>
     </div>
   </div>
 
@@ -387,15 +407,58 @@ function _hexToBytes(hex) {
 }
 
 function _extractWalletKeys(text) {
-  try {
-    const data = JSON.parse(text.trim());
-    const candidates = [data, ...Object.values(data || {})];
-    for (const c of candidates) {
-      if (c && c.privateKey && c.publicKey && typeof c.privateKey === 'string' && c.privateKey.length === 64)
-        return { seed: _hexToBytes(c.privateKey), pubkey: _hexToBytes(c.publicKey) };
+  // Încearcă JSON
+  let data;
+  try { data = JSON.parse(text.trim()); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+
+  // Caută câmpul privateKey la orice nivel de profunzime (1 nivel extra)
+  const objs = [data];
+  for (const v of Object.values(data)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) objs.push(v);
+  }
+
+  for (const obj of objs) {
+    if (!obj.privateKey || typeof obj.privateKey !== 'string') continue;
+
+    // Normalizează hex (lowercase, elimină spații/newlines dar NU alte caractere)
+    const raw  = obj.privateKey.trim();
+    const hex  = raw.toLowerCase().replace(/\s/g, '');
+    if (!/^[0-9a-f]+$/.test(hex) || hex.length % 2 !== 0) continue;
+
+    const b = _hexToBytes(hex);
+
+    // 69 bytes: [0x80] + seed(32) + pubkey(32) + checksum(4) — format binar webdollar.io
+    if (b.length === 69 && b[0] === 0x80) {
+      return { seed: b.slice(1, 33), pubkey: b.slice(33, 65) };
     }
-  } catch {}
+    // 64 bytes: TweetNaCl secretKey = seed(32) + pubkey(32)
+    if (b.length === 64) {
+      return { seed: b.slice(0, 32), pubkey: b.slice(32, 64) };
+    }
+    // 32 bytes: seed Ed25519 direct
+    if (b.length === 32) {
+      let pub = new Uint8Array(32);
+      if (obj.publicKey && typeof obj.publicKey === 'string') {
+        const ph = obj.publicKey.trim().toLowerCase().replace(/\s/g, '');
+        if (/^[0-9a-f]{64}$/.test(ph)) pub = _hexToBytes(ph);
+      }
+      return { seed: b, pubkey: pub };
+    }
+  }
   return null;
+}
+
+async function _importEd25519Key(seed) {
+  // Chrome 113+ suportă Ed25519 'raw'; PKCS8 fallback pentru alte browsere
+  try {
+    return await crypto.subtle.importKey('raw', seed, { name: 'Ed25519' }, false, ['sign']);
+  } catch {}
+  // RFC 8410 PKCS8 header pentru Ed25519 seed de 32 bytes
+  const HDR = new Uint8Array([0x30,0x2e,0x02,0x01,0x00,0x30,0x05,0x06,0x03,0x2b,0x65,0x70,0x04,0x22,0x04,0x20]);
+  const pkcs8 = new Uint8Array(HDR.length + seed.length);
+  pkcs8.set(HDR); pkcs8.set(seed, HDR.length);
+  return await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
 }
 
 async function handleWEBDFile(file) {
@@ -415,13 +478,27 @@ async function handleWEBDFile(file) {
       // Format 2: binar 69 bytes = [0x80] + seed(32) + pubkey(32) + checksum(4)
       const ab  = await file.arrayBuffer();
       const buf = new Uint8Array(ab);
-      if (buf.length !== 69 || buf[0] !== 0x80) {
-        showMsg(msg, 'Fișier .webd invalid — acceptat: JSON (webdollar.io) sau binar legacy.', 'err'); return;
+      if (buf.length === 69 && buf[0] === 0x80) {
+        seed = buf.slice(1, 33); pubkey = buf.slice(33, 65);
+      } else {
+        // Afișează informații diagnostice
+        let hint = `fișier ${file.size} bytes`;
+        try {
+          const t = await file.text();
+          const preview = t.slice(0, 120).replace(/[\x00-\x1f]/g, '·');
+          hint += ` · preview: "${preview}"`;
+          const d = JSON.parse(t.trim());
+          if (d && d.privateKey)
+            hint += ` · privateKey hex length=${d.privateKey.trim().length}`;
+        } catch {}
+        showMsg(msg,
+          `Format nerecunoscut (${hint}).<br>Acceptat: JSON cu câmp privateKey (webdollar.io) sau binar 69 bytes.`,
+          'err');
+        return;
       }
-      seed = buf.slice(1, 33); pubkey = buf.slice(33, 65);
     }
 
-    const cryptoKey = await crypto.subtle.importKey('raw', seed, { name: 'Ed25519' }, false, ['sign']);
+    const cryptoKey = await _importEd25519Key(seed);
     const msgBytes  = new TextEncoder().encode(_wdState.message);
     const sigBuffer = await crypto.subtle.sign('Ed25519', cryptoKey, msgBytes);
 
@@ -455,7 +532,10 @@ async function submitWithdrawal() {
     }).then(r => r.json());
 
     if (r.ok) {
-      showMsg(msg, `Retragere trimisă! TxID: ${r.tx_id}`, 'ok');
+      const logHtml = (r.log && r.log.length)
+        ? `<pre style="margin-top:10px;background:#0d1117;border:1px solid #2d3148;border-radius:6px;padding:10px;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre-wrap;word-break:break-all">${r.log.map(l => escHtml(l)).join('\n')}</pre>`
+        : '';
+      showMsg(msg, `Retragere trimisă! TxID: <span style="font-family:monospace;font-size:.8rem;word-break:break-all">${r.tx_id}</span>${logHtml}`, 'ok');
       _wdState = { nonce: null, message: null, pubkeyHex: null, sigHex: null };
       // Reset steps
       document.getElementById('wd-step2').style.opacity = '.4';
@@ -463,7 +543,10 @@ async function submitWithdrawal() {
       document.getElementById('wd-step3').style.opacity = '.4';
       document.getElementById('wd-step3').style.pointerEvents = 'none';
     } else {
-      showMsg(msg, r.error || 'Eroare necunoscută.', 'err');
+      const logHtml = (r.log && r.log.length)
+        ? `<pre style="margin-top:8px;background:#0d1117;border:1px solid #2d3148;border-radius:6px;padding:10px;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre-wrap">${r.log.map(l => escHtml(l)).join('\n')}</pre>`
+        : '';
+      showMsg(msg, (r.error || 'Eroare necunoscută.') + logHtml, 'err');
     }
   } catch(e) { showMsg(msg, 'Eroare conexiune: ' + e, 'err'); }
   btn.disabled = false;
@@ -473,7 +556,10 @@ async function submitWithdrawal() {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const s = await fetch('api/stats').then(r => r.json());
+    const [s, n] = await Promise.all([
+      fetch('api/stats').then(r => r.json()),
+      fetch('api/node-status').then(r => r.json()).catch(() => ({})),
+    ]);
     document.getElementById('s-total-stake').textContent = fmtWEBD(s.total_staked);
     document.getElementById('s-stakers').textContent     = s.active_stakers ?? '—';
     document.getElementById('s-fee').textContent         = s.pool_fee_pct ?? '—';
@@ -483,6 +569,23 @@ async function loadStats() {
     }
     if (s.min_stake_webd) {
       document.getElementById('min-stake-label').textContent = s.min_stake_webd;
+    }
+    // Node status
+    if (n.block_height != null) {
+      document.getElementById('s-block-height').textContent = n.block_height.toLocaleString();
+      document.getElementById('s-synced').textContent = n.synced ? '● sincronizat' : '○ sincronizare...';
+      document.getElementById('s-synced').style.color = n.synced ? '#4ade80' : '#fb923c';
+    }
+    if (n.mining_balance != null) {
+      document.getElementById('s-mining-bal').textContent = fmtWEBD(n.mining_balance);
+    }
+    document.getElementById('s-blocks-found').textContent = n.pool_blocks_found ?? '—';
+    if (n.pool_rewards_total) {
+      document.getElementById('s-rewards-total').textContent = fmtWEBD(n.pool_rewards_total) + ' WEBD total';
+    }
+    if (n.blocks_per_chance != null) {
+      document.getElementById('s-blocks-chance').textContent = '1 / ' + n.blocks_per_chance.toLocaleString();
+      document.getElementById('s-est-days').textContent = n.estimated_days != null ? '~' + n.estimated_days + ' zile/bloc' : '—';
     }
   } catch(e) { console.error('Stats:', e); }
 }

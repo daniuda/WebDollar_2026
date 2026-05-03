@@ -8,14 +8,26 @@ import os
 import struct
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 WEBD_UNITS = 10_000
 MIN_FEE_WEBD = 10
 MIN_AMOUNT_WEBD = 10
 PAYOUT_FEE_PCT = 0.5   # procent din total_out pentru tranzacții multi-output
-TX_VERSION = 0x02
 WEBD_TOKEN_ID = bytes([0x01])
 WIF_PREFIX = bytes([0x58, 0x40, 0x43, 0xfe])
+
+# Hard-fork heights — aceleași valori ca în Node-WebDollar/src/consts/const_global.js
+HARD_FORK_BUG_2_BYTES   = 46_950   # < → version 0x00 (nonce 1 byte)
+HARD_FORK_OPTIMIZATION  = 153_065  # >= → version 0x02
+
+def compute_version(time_lock: int) -> int:
+    if time_lock < HARD_FORK_BUG_2_BYTES:
+        return 0x00
+    elif time_lock < HARD_FORK_OPTIMIZATION:
+        return 0x01
+    else:
+        return 0x02
 
 
 # ── serialization helpers ──────────────────────────────────────────────────────
@@ -88,9 +100,22 @@ def sign_ed25519(seed_hex: str, message: bytes) -> bytes:
 def get_public_key_from_seed(seed_hex: str) -> bytes:
     key = _load_private_key(seed_hex)
     pub = key.public_key()
-    # Export raw 32-byte public key
-    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     return pub.public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+def ripemd160_sha256(data: bytes) -> bytes:
+    """RIPEMD160(SHA256(data)) — adresă WebDollar din cheie publică (identic cu Node-WebDollar)."""
+    sha = hashlib.sha256(data).digest()
+    try:
+        h = hashlib.new('ripemd160')
+        h.update(sha)
+        return h.digest()
+    except ValueError:
+        # OpenSSL >=3 poate dezactiva RIPEMD-160 — fallback: importă din cryptography
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+        d = hashes.Hash(hashes.RIPEMD160(), backend=default_backend())
+        d.update(sha)
+        return d.finalize()
 
 
 # ── main builder ───────────────────────────────────────────────────────────────
@@ -107,35 +132,65 @@ def build_signed_tx(
 ) -> dict:
     """
     Build and sign a WebDollar transaction.
+    time_lock TREBUIE să fie currentBlockHeight-1 (fetch din /top), nu 0!
+    Version este derivat automat din time_lock (ca în Node-WebDollar const_global.js).
     Returns dict with: tx_id, serialized_hex, tx_json
     """
     if nonce is None:
-        nonce = int.from_bytes(os.urandom(2), 'big')
+        nonce = int.from_bytes(os.urandom(2), 'big') % 0x10000
 
     if amount_webd < MIN_AMOUNT_WEBD:
         raise ValueError(f'Suma minimă: {MIN_AMOUNT_WEBD} WEBD')
     if fee_webd < MIN_FEE_WEBD:
         raise ValueError(f'Fee minim: {MIN_FEE_WEBD} WEBD')
 
+    version = compute_version(time_lock)
     amount_units = round(amount_webd * WEBD_UNITS)
     fee_units = round(fee_webd * WEBD_UNITS)
     from_amount_units = amount_units + fee_units
 
     from_unencoded = decode_webd_address(from_address)
     to_unencoded = decode_webd_address(to_address)
-    from_public_key = hex_to_bytes(public_key_hex)
+
+    # Derivă cheia publică din cheia privată — NU folosi public_key_hex direct
+    # (dacă e diferit de cheia reală, semnătura nu va verifica)
+    from_public_key = get_public_key_from_seed(private_key_hex)
+    if len(from_public_key) != 32:
+        raise ValueError('Cheie publică derivată invalidă')
+
+    # Verifică consistența: adresa WIF trebuie să corespundă cu cheia publică derivată
+    try:
+        derived_unencoded = ripemd160_sha256(from_public_key)
+        if derived_unencoded != from_unencoded:
+            import sys as _sys
+            print(
+                f'[TX_BUILDER WARNING] Adresă incompatibilă cu cheia privată!\n'
+                f'  from_address→unencoded: {from_unencoded.hex()}\n'
+                f'  RIPEMD160(SHA256(privKey→pubKey)): {derived_unencoded.hex()}\n'
+                f'  Semnătura NU va verifica pe nod! Verifică config: address ↔ private_key_hex.',
+                file=_sys.stderr, flush=True
+            )
+            raise ValueError(
+                f'Adresă incompatibilă cu cheia privată — from_address nu corespunde private_key_hex.\n'
+                f'  WIF unencoded:  {from_unencoded.hex()}\n'
+                f'  Derived:        {derived_unencoded.hex()}'
+            )
+    except ValueError:
+        raise
+    except Exception as _e:
+        print(f'[TX_BUILDER] Nu pot verifica adresa: {_e}', flush=True)
 
     if len(from_unencoded) != 20:
         raise ValueError('Adresă sursă invalidă')
     if len(to_unencoded) != 20:
         raise ValueError('Adresă destinatar invalidă')
-    if len(from_public_key) != 32:
-        raise ValueError('Cheie publică invalidă (trebuie 32 bytes)')
 
-    # Signing payload — identic cu txBuilder.ts
+    nonce_bytes = u2(nonce) if version >= 0x01 else u1(nonce % 0x100)
+
+    # Signing payload — identic cu txBuilder.ts / serializeForSigning
     signing_payload = (
-        u1(TX_VERSION) +
-        u2(nonce) +
+        u1(version) +
+        nonce_bytes +
         u3(time_lock) +
         from_unencoded +
         from_public_key +
@@ -151,8 +206,8 @@ def build_signed_tx(
 
     # Tranzacție serializată
     serialized = (
-        u1(TX_VERSION) +
-        u2(nonce) +
+        u1(version) +
+        nonce_bytes +
         u3(time_lock) +
         # from section
         u1(1) +
@@ -173,12 +228,12 @@ def build_signed_tx(
         'tx_id': tx_id,
         'serialized_hex': bytes_to_hex(serialized),
         'tx_json': {
-            'version': TX_VERSION,
+            'version': version,
             'nonce': nonce,
             'time_lock': time_lock,
             'from': [{
                 'unencoded_address': bytes_to_hex(from_unencoded),
-                'public_key': public_key_hex,
+                'public_key': bytes_to_hex(from_public_key),
                 'amount': from_amount_units,
                 'signature': bytes_to_hex(signature),
             }],
@@ -210,7 +265,7 @@ def build_signed_tx_multi(
     if not outputs:
         raise ValueError('Lista de destinatari e goală')
     if nonce is None:
-        nonce = int.from_bytes(os.urandom(2), 'big')
+        nonce = int.from_bytes(os.urandom(2), 'big') % 0x10000
 
     decoded = []
     total_out = 0.0
@@ -226,10 +281,33 @@ def build_signed_tx_multi(
     fee_webd          = max(MIN_FEE_WEBD, round(total_out * fee_pct / 100.0, 4))
     from_amount_units = round((total_out + fee_webd) * WEBD_UNITS)
     from_unencoded    = decode_webd_address(from_address)
-    from_public_key   = hex_to_bytes(public_key_hex)
+    from_public_key   = get_public_key_from_seed(private_key_hex)
 
     if len(from_public_key) != 32:
-        raise ValueError('Cheie publică invalidă (trebuie 32 bytes)')
+        raise ValueError('Cheie publică derivată invalidă')
+
+    try:
+        derived_unencoded = ripemd160_sha256(from_public_key)
+        if derived_unencoded != from_unencoded:
+            import sys as _sys
+            print(
+                f'[TX_BUILDER WARNING] Adresă incompatibilă cu cheia privată (multi)!\n'
+                f'  from_address→unencoded: {from_unencoded.hex()}\n'
+                f'  RIPEMD160(SHA256(privKey→pubKey)): {derived_unencoded.hex()}',
+                file=_sys.stderr, flush=True
+            )
+            raise ValueError(
+                f'Adresă incompatibilă cu cheia privată — from_address nu corespunde private_key_hex.\n'
+                f'  WIF unencoded:  {from_unencoded.hex()}\n'
+                f'  Derived:        {derived_unencoded.hex()}'
+            )
+    except ValueError:
+        raise
+    except Exception as _e:
+        print(f'[TX_BUILDER] Nu pot verifica adresa (multi): {_e}', flush=True)
+
+    version     = compute_version(time_lock)
+    nonce_bytes = u2(nonce) if version >= 0x01 else u1(nonce % 0x100)
 
     # to section: u1(N) + [addr(20) + amount_7le(7)] × N
     n          = len(decoded)
@@ -238,8 +316,8 @@ def build_signed_tx_multi(
         to_section += addr_bytes + u7le(amount_units)
 
     signing_payload = (
-        u1(TX_VERSION) +
-        u2(nonce) +
+        u1(version) +
+        nonce_bytes +
         u3(time_lock) +
         from_unencoded +
         from_public_key +
@@ -254,8 +332,8 @@ def build_signed_tx_multi(
         raise ValueError('Semnătură Ed25519 invalidă')
 
     serialized = (
-        u1(TX_VERSION) +
-        u2(nonce) +
+        u1(version) +
+        nonce_bytes +
         u3(time_lock) +
         u1(1) +
         from_public_key +
