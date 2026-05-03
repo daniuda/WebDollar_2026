@@ -77,6 +77,11 @@
   .file-drop p { font-size: .85rem; color: #64748b; }
   .file-drop input[type="file"] { display: none; }
 
+  /* Tx tracking */
+  .tx-track-box { margin-top:10px; padding:8px 12px; background:#0d1117; border:1px solid #2d3148; border-radius:6px; font-size:.82rem; color:#94a3b8; }
+  .tx-track-spin { display:inline-block; animation:spin 1.2s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
   /* Table */
   table { width: 100%; border-collapse: collapse; font-size: .83rem; }
   th { text-align: left; padding: 8px 10px; color: #64748b; font-size: .72rem; text-transform: uppercase; border-bottom: 1px solid #2d3148; }
@@ -535,13 +540,17 @@ async function submitWithdrawal() {
       const logHtml = (r.log && r.log.length)
         ? `<pre style="margin-top:10px;background:#0d1117;border:1px solid #2d3148;border-radius:6px;padding:10px;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre-wrap;word-break:break-all">${r.log.map(l => escHtml(l)).join('\n')}</pre>`
         : '';
-      showMsg(msg, `Retragere trimisă! TxID: <span style="font-family:monospace;font-size:.8rem;word-break:break-all">${r.tx_id}</span>${logHtml}`, 'ok');
+      const trackId = 'tx-track-' + Date.now();
+      showMsg(msg,
+        `Retragere trimisă! TxID: <span style="font-family:monospace;font-size:.8rem;word-break:break-all">${escHtml(r.tx_id)}</span>` +
+        `<div id="${trackId}" class="tx-track-box"><span class="tx-track-spin">↻</span> Verificare status...</div>` +
+        logHtml, 'ok');
       _wdState = { nonce: null, message: null, pubkeyHex: null, sigHex: null };
-      // Reset steps
       document.getElementById('wd-step2').style.opacity = '.4';
       document.getElementById('wd-step2').style.pointerEvents = 'none';
       document.getElementById('wd-step3').style.opacity = '.4';
       document.getElementById('wd-step3').style.pointerEvents = 'none';
+      _pollTxStatus(r.tx_id, trackId, 0);
     } else {
       const logHtml = (r.log && r.log.length)
         ? `<pre style="margin-top:8px;background:#0d1117;border:1px solid #2d3148;border-radius:6px;padding:10px;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre-wrap">${r.log.map(l => escHtml(l)).join('\n')}</pre>`
@@ -551,6 +560,37 @@ async function submitWithdrawal() {
   } catch(e) { showMsg(msg, 'Eroare conexiune: ' + e, 'err'); }
   btn.disabled = false;
   btn.textContent = 'Retrage WEBD';
+}
+
+// ── Tx status polling ──────────────────────────────────────────────────────────
+const _TX_POLL_INTERVAL = 5000;
+const _TX_POLL_MAX      = 72;   // 6 minute × 10s (creste intervalul dupa primele 12 poll)
+
+async function _pollTxStatus(txId, elId, attempt) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+
+  if (attempt >= _TX_POLL_MAX) {
+    el.innerHTML = '<span style="color:#94a3b8">? Status necunoscut după 6 min — tranzacția a fost trimisă, va fi procesată de rețea.</span>';
+    return;
+  }
+
+  try {
+    const r = await fetch(`api/tx/status/${encodeURIComponent(txId)}`).then(r => r.json());
+    if (r.status === 'confirmed') {
+      el.innerHTML = `<span style="color:#4ade80;font-weight:600">✓ Confirmat în blocul #${r.block_height}!</span>`;
+      return;
+    } else if (r.status === 'pending') {
+      el.innerHTML = `<span style="color:#fbbf24">⏳ În coada pending a nodului (attempt ${attempt + 1})</span>`;
+    } else {
+      el.innerHTML = `<span class="tx-track-spin">↻</span> <span style="color:#94a3b8">Verificare... (${attempt + 1}/${_TX_POLL_MAX})</span>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<span class="tx-track-spin">↻</span> <span style="color:#94a3b8">Verificare... (${attempt + 1}/${_TX_POLL_MAX})</span>`;
+  }
+
+  const delay = attempt < 12 ? _TX_POLL_INTERVAL : 10000;
+  setTimeout(() => _pollTxStatus(txId, elId, attempt + 1), delay);
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────────

@@ -489,6 +489,109 @@ def _check_tx_in_pending(tx_id: str, node_url: str) -> bool:
     return False
 
 
+def _parse_tx_header(tx_hex: str) -> dict | None:
+    """Extrage version, nonce, timeLock din tx_hex serializat (primii 6 bytes)."""
+    try:
+        b = bytes.fromhex(tx_hex)
+        version = b[0]
+        if version >= 1:
+            nonce = (b[1] << 8) | b[2]
+            tl    = (b[3] << 16) | (b[4] << 8) | b[5]
+        else:
+            nonce = b[1]
+            tl    = (b[2] << 16) | (b[3] << 8) | b[4]
+        return {'version': version, 'nonce': nonce, 'time_lock': tl}
+    except Exception:
+        return None
+
+
+def check_tx_status(tx_id: str) -> dict:
+    """
+    Caută tx_id în coada pending a nodului și în ultimele 30 blocuri.
+
+    Pending: pending list din nod nu are câmp id — matching se face prin
+    (from_address == POOL_ADDRESS, nonce, timeLock) extrase din tx_hex stocat în DB.
+
+    Returnează: {status: 'pending'|'confirmed'|'not_found', block_height?, tx_id}
+    """
+    # Preia tx_hex din DB pentru a putea face matching în pending
+    tx_fields = None
+    with _db_lock, _conn() as c:
+        row = c.execute('SELECT tx_hex FROM withdrawals WHERE tx_id=?', (tx_id,)).fetchone()
+        if row and row['tx_hex']:
+            tx_fields = _parse_tx_header(row['tx_hex'])
+
+    # 1. Pending pool — match prin (POOL_ADDRESS, nonce, timeLock)
+    if tx_fields:
+        try:
+            data = _get_json(f'{NODE_LOCAL_URL}/transactions/pending', timeout=5)
+            lst  = data if isinstance(data, list) else (
+                   data.get('transactions') or data.get('pending') or
+                   data.get('list') or [] if isinstance(data, dict) else [])
+            for item in lst:
+                if not isinstance(item, dict):
+                    continue
+                from_addrs = item.get('from', {}).get('addresses', [])
+                if not from_addrs:
+                    continue
+                from_addr = from_addrs[0].get('address', '') if isinstance(from_addrs[0], dict) else ''
+                if (from_addr == POOL_ADDRESS and
+                        item.get('nonce') == tx_fields['nonce'] and
+                        item.get('timeLock') == tx_fields['time_lock']):
+                    return {'status': 'pending', 'found': True, 'tx_id': tx_id}
+        except Exception:
+            pass
+
+    # 2. Ultimele 30 blocuri — caută după tx_id în câmpurile blocului
+    try:
+        height = int(_get_json(f'{NODE_LOCAL_URL}/top', timeout=4).get('top', 0))
+        tx_id_low = tx_id.lower()
+        for h in range(height, max(0, height - 30) - 1, -1):
+            try:
+                block = fetch_block(h)
+            except Exception:
+                continue
+            for tx in (block.get('transactions') or block.get('txs') or []):
+                if not isinstance(tx, dict):
+                    continue
+                tid = (tx.get('id') or tx.get('txId') or tx.get('hash') or
+                       tx.get('txHash') or '')
+                if tid and (tid.lower() == tx_id_low or tx_id_low in tid.lower()):
+                    with _db_lock, _conn() as c:
+                        c.execute("UPDATE withdrawals SET status='confirmed' "
+                                  "WHERE tx_id=? AND status='sent'", (tx_id,))
+                    return {'status': 'confirmed', 'found': True,
+                            'block_height': h, 'tx_id': tx_id}
+
+            # Matching alternativ dacă blocul nu are tx_id explicit:
+            # verific după (from_address, nonce, timeLock) — la fel ca pending
+            if tx_fields:
+                b_nonce    = block.get('nonce')
+                b_timelock = block.get('timeLock') or block.get('time_lock')
+                b_miner    = block.get('miner') or block.get('minerAddress') or ''
+                # Dacă blocul are câmpul de tranzacții și una coincide cu tx-ul nostru
+                for tx in (block.get('transactions') or block.get('txs') or []):
+                    if not isinstance(tx, dict):
+                        continue
+                    frm = tx.get('from', {})
+                    addrs = frm.get('addresses', [])
+                    if not addrs:
+                        continue
+                    fa = addrs[0].get('address', '') if isinstance(addrs[0], dict) else ''
+                    if (fa == POOL_ADDRESS and
+                            tx.get('nonce') == tx_fields['nonce'] and
+                            tx.get('timeLock') == tx_fields['time_lock']):
+                        with _db_lock, _conn() as c:
+                            c.execute("UPDATE withdrawals SET status='confirmed' "
+                                      "WHERE tx_id=? AND status='sent'", (tx_id,))
+                        return {'status': 'confirmed', 'found': True,
+                                'block_height': h, 'tx_id': tx_id}
+    except Exception:
+        pass
+
+    return {'status': 'not_found', 'found': False, 'tx_id': tx_id}
+
+
 def _socketio_broadcast_tx(tx_hex: str, tx_id: str = '') -> dict:
     """
     Broadcast tx direct la un nod Node-WebDollar via socket.io v2.
@@ -1026,6 +1129,13 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == '/api/node-status':
             self._json(get_node_status())
+
+        elif path.startswith('/api/tx/status/'):
+            tx_id = urllib.parse.unquote(path[len('/api/tx/status/'):]).strip()
+            if not tx_id:
+                self._json({'error': 'tx_id lipsește'}, 400)
+                return
+            self._json(check_tx_status(tx_id))
 
         elif path == '/api/stakers':
             self._json(db_get_all_stakers())
