@@ -341,9 +341,9 @@ const fmtWEBD = v => (v == null || v < 0) ? '—' : Number(v).toLocaleString('ro
 const fmtDT   = ts => ts ? new Date(ts * 1000).toLocaleString('ro-RO') : '—';
 const escHtml = s  => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const shortAddr = a => a ? a.slice(0, 12) + '...' + a.slice(-6) : '—';
-const showMsg = (id, text, type) => {
+const showMsg = (id, html, type) => {
   const el = document.getElementById(id);
-  el.textContent = text;
+  el.innerHTML = html;
   el.className = 'msg ' + type;
 };
 
