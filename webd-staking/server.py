@@ -722,27 +722,51 @@ def _wif_to_unencoded_hex(wif: str) -> str:
         return ''
 
 
+# Nonce local — incrementat după fiecare tx trimis, resetat când nodul confirmă o valoare mai mare.
+# Previne trimiterea mai multor tx cu același nonce când precedentul e încă unconfirmed.
+_local_nonce: int | None = None
+_local_nonce_lock = threading.Lock()
+
 def fetch_nonce_and_timelock(from_address: str = None) -> tuple:
     """
-    Returnează (nonce, time_lock) din nodul local — identic cu Windows miner.
-    nonce   = GET /address/nonce/{address} → .nonce
-    timeLock = GET /top → .top - 1
+    Returnează (nonce, time_lock).
+    nonce: max(nonce_nod, _local_nonce+1) — evită conflicte când tx anterior e încă în pending.
+    timeLock: GET /top → .top - 1
     """
+    global _local_nonce
     if from_address is None:
         from_address = POOL_ADDRESS
+
+    node_nonce = 0
     try:
-        addr_enc = urllib.parse.quote(from_address, safe='')
+        addr_enc   = urllib.parse.quote(from_address, safe='')
         nonce_data = _get_json(f'{NODE_LOCAL_URL}/address/nonce/{addr_enc}', timeout=5)
-        nonce = int(nonce_data.get('nonce', 0))
+        node_nonce = int(nonce_data.get('nonce', 0))
     except Exception:
-        nonce = 0
+        pass
+
+    with _local_nonce_lock:
+        if _local_nonce is None or node_nonce > _local_nonce:
+            _local_nonce = node_nonce   # nodul a confirmat un tx → sincronizăm
+        nonce = _local_nonce
+
     try:
-        top_data = _get_json(f'{NODE_LOCAL_URL}/top', timeout=5)
-        top = int(top_data.get('top', 0))
-        time_lock = max(0, top - 1)
+        top_data  = _get_json(f'{NODE_LOCAL_URL}/top', timeout=5)
+        time_lock = max(0, int(top_data.get('top', 0)) - 1)
     except Exception:
         time_lock = 0
+
     return nonce, time_lock
+
+
+def _advance_local_nonce():
+    """Incrementează nonce-ul local după ce un tx a fost trimis cu succes."""
+    global _local_nonce
+    with _local_nonce_lock:
+        if _local_nonce is None:
+            _local_nonce = 1
+        else:
+            _local_nonce += 1
 
 
 def _node_create_transaction(to_address: str, amount_webd: float) -> dict:
@@ -910,6 +934,8 @@ def _auto_payout(new_shares: dict):
             result_ok = bool(rest_res.get('result'))
             method = f'rest(peers={rest_res.get("peers_notified",0)})'
         status = 'sent' if result_ok else 'failed'
+        if result_ok:
+            _advance_local_nonce()
         for o in eligible:
             if status == 'sent':
                 db_mark_rewards_paid(o['address'], o['amount_webd'])
@@ -971,6 +997,7 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
             log.append(l)
         if sio_res.get('result'):
             status = 'sent'
+            _advance_local_nonce()
             db_add_withdrawal(address, amount, tx['serialized_hex'], tx['tx_id'], status)
             in_p = sio_res.get('in_pending', False)
             log.append(f'[WIT] ✓ Tx trimis — {"in pending pool" if in_p else "validare in curs pe nod"}')
@@ -1000,6 +1027,7 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
         status = 'sent' if result.get('result') else 'failed'
         db_add_withdrawal(address, amount, tx['serialized_hex'], tx['tx_id'], status)
         if status == 'sent':
+            _advance_local_nonce()
             peers = result.get('peers_notified', 0)
             log.append(f'[WIT] HTTP broadcast: {peers} peers notificati')
             print(f'[WIT broadcast] {amount:.4f} WEBD -> {address[:20]}... tx={tx["tx_id"][:16]} peers={peers}', flush=True)
