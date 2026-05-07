@@ -204,9 +204,8 @@ def db_mark_rewards_paid(address: str, amount: float):
     with _db_lock, _conn() as c:
         c.execute('''UPDATE user_balances
                      SET rewards_paid    = rewards_paid + ?,
-                         withdrawn_total = withdrawn_total + ?,
                          last_activity_ts = ?
-                     WHERE address = ?''', (amount, amount, int(time.time()), address))
+                     WHERE address = ?''', (amount, int(time.time()), address))
         c.commit()
 
 def db_add_withdrawal(address: str, amount: float, tx_hex=None, tx_id=None, status='pending') -> int:
@@ -243,12 +242,18 @@ def db_get_all_stakers() -> list:
 
 def db_get_deposits(address: str) -> list:
     with _db_lock, _conn() as c:
-        rows = c.execute('SELECT * FROM deposits WHERE from_address=? ORDER BY ts DESC LIMIT 50', (address,)).fetchall()
+        placeholders = ','.join('?' * len(_addr_variants(address)))
+        rows = c.execute(
+            f'SELECT * FROM deposits WHERE from_address IN ({placeholders}) ORDER BY ts DESC LIMIT 50',
+            _addr_variants(address)).fetchall()
     return [dict(r) for r in rows]
 
 def db_get_withdrawals(address: str) -> list:
     with _db_lock, _conn() as c:
-        rows = c.execute('SELECT * FROM withdrawals WHERE address=? ORDER BY ts DESC LIMIT 50', (address,)).fetchall()
+        placeholders = ','.join('?' * len(_addr_variants(address)))
+        rows = c.execute(
+            f'SELECT * FROM withdrawals WHERE address IN ({placeholders}) ORDER BY ts DESC LIMIT 50',
+            _addr_variants(address)).fetchall()
     return [dict(r) for r in rows]
 
 def db_get_recent_rewards(limit=20) -> list:
@@ -278,6 +283,16 @@ def db_set_scan_height(h: int):
         c.execute("INSERT OR REPLACE INTO scan_state (key,value) VALUES ('last_height',?)", (str(h),))
         c.commit()
 
+def db_get_local_nonce() -> int | None:
+    with _db_lock, _conn() as c:
+        row = c.execute("SELECT value FROM scan_state WHERE key='local_nonce'").fetchone()
+    return int(row['value']) if row else None
+
+def db_set_local_nonce(n: int):
+    with _db_lock, _conn() as c:
+        c.execute("INSERT OR REPLACE INTO scan_state (key,value) VALUES ('local_nonce',?)", (str(n),))
+        c.commit()
+
 def db_save_challenge(nonce: str, address: str, amount: float) -> int:
     exp = int(time.time()) + CHALLENGE_TTL
     with _db_lock, _conn() as c:
@@ -290,9 +305,13 @@ def db_save_challenge(nonce: str, address: str, amount: float) -> int:
 def db_consume_challenge(nonce: str, address: str, amount: float) -> bool:
     now = int(time.time())
     with _db_lock, _conn() as c:
-        row = c.execute(
-            'SELECT * FROM withdrawal_challenges WHERE nonce=? AND address=? AND expires_ts>?',
-            (nonce, address, now)).fetchone()
+        row = None
+        for addr in _addr_variants(address):
+            row = c.execute(
+                'SELECT * FROM withdrawal_challenges WHERE nonce=? AND address=? AND expires_ts>?',
+                (nonce, addr, now)).fetchone()
+            if row:
+                break
         if not row or abs(float(row['amount']) - amount) > 0.001:
             return False
         c.execute('DELETE FROM withdrawal_challenges WHERE nonce=?', (nonce,))
@@ -352,6 +371,33 @@ def db_export_ledger() -> dict:
     }
 
 # ── Backup loop ────────────────────────────────────────────────────────────────
+def pending_tx_checker_loop():
+    """Verifică periodic retragerile cu status 'sent' și le marchează confirmed/failed."""
+    time.sleep(60)  # lasa serviciul sa se initializeze
+    while True:
+        try:
+            with _db_lock, _conn() as c:
+                rows = c.execute(
+                    "SELECT tx_id FROM withdrawals WHERE status='sent' ORDER BY ts DESC LIMIT 20"
+                ).fetchall()
+            for row in rows:
+                tid = row['tx_id'] if hasattr(row, 'keys') else row[0]
+                if tid:
+                    result = check_tx_status(tid)
+                    if result['status'] == 'confirmed':
+                        print(f'[CHK] tx {tid[:16]}... confirmat bloc #{result.get("block_height")}', flush=True)
+                    elif result['status'] == 'not_found':
+                        # Marcam failed doar daca tx-ul e mai vechi de 24h
+                        with _db_lock, _conn() as c:
+                            w = c.execute("SELECT ts FROM withdrawals WHERE tx_id=?", (tid,)).fetchone()
+                            if w and (time.time() - (w['ts'] if hasattr(w, 'keys') else w[0])) > 86400:
+                                c.execute("UPDATE withdrawals SET status='failed' WHERE tx_id=? AND status='sent'", (tid,))
+                                c.commit()
+                                print(f'[CHK] tx {tid[:16]}... marcat failed (>24h not_found)', flush=True)
+        except Exception as e:
+            print(f'[CHK ERROR] {e}', flush=True)
+        time.sleep(300)  # verifică la fiecare 5 minute
+
 def backup_loop():
     """Backup automat al DB-ului la fiecare BACKUP_INTERVAL secunde."""
     BACKUP_DIR.mkdir(exist_ok=True)
@@ -550,11 +596,11 @@ def check_tx_status(tx_id: str) -> dict:
         except Exception:
             pass
 
-    # 2. Ultimele 30 blocuri — caută după tx_id în câmpurile blocului
+    # 2. Ultimele 100 blocuri — caută după tx_id în câmpurile blocului
     try:
         height = int(_get_json(f'{NODE_LOCAL_URL}/top', timeout=4).get('top', 0))
         tx_id_low = tx_id.lower()
-        for h in range(height, max(0, height - 30) - 1, -1):
+        for h in range(height, max(0, height - 100) - 1, -1):
             try:
                 block = fetch_block(h)
             except Exception:
@@ -729,9 +775,15 @@ def _wif_to_unencoded_hex(wif: str) -> str:
 
 
 # Nonce local — incrementat după fiecare tx trimis, resetat când nodul confirmă o valoare mai mare.
-# Previne trimiterea mai multor tx cu același nonce când precedentul e încă unconfirmed.
+# Persistat în DB (scan_state key='local_nonce') pentru a supraviețui restart-urilor.
 _local_nonce: int | None = None
 _local_nonce_lock = threading.Lock()
+
+def _load_local_nonce():
+    """Încarcă nonce-ul din DB la startup."""
+    global _local_nonce
+    with _local_nonce_lock:
+        _local_nonce = db_get_local_nonce()
 
 def fetch_nonce_and_timelock(from_address: str = None) -> tuple:
     """
@@ -754,6 +806,7 @@ def fetch_nonce_and_timelock(from_address: str = None) -> tuple:
     with _local_nonce_lock:
         if _local_nonce is None or node_nonce > _local_nonce:
             _local_nonce = node_nonce   # nodul a confirmat un tx → sincronizăm
+            db_set_local_nonce(_local_nonce)
         nonce = _local_nonce
 
     try:
@@ -773,6 +826,7 @@ def _advance_local_nonce():
             _local_nonce = 1
         else:
             _local_nonce += 1
+        db_set_local_nonce(_local_nonce)
 
 
 def _node_create_transaction(to_address: str, amount_webd: float) -> dict:
@@ -1243,9 +1297,11 @@ if __name__ == '__main__':
 
     init_db()
     _migrate_db()
+    _load_local_nonce()
 
-    threading.Thread(target=block_scan_loop, daemon=True, name='block-scan').start()
-    threading.Thread(target=backup_loop,    daemon=True, name='backup').start()
+    threading.Thread(target=block_scan_loop,        daemon=True, name='block-scan').start()
+    threading.Thread(target=backup_loop,            daemon=True, name='backup').start()
+    threading.Thread(target=pending_tx_checker_loop, daemon=True, name='tx-checker').start()
 
     host = cfg.get('dashboard', {}).get('host', '127.0.0.1')
     port = int(cfg.get('dashboard', {}).get('port', 3004))
