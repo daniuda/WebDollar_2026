@@ -1078,6 +1078,7 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
         tx = None
 
     # Metoda 2 (fallback): broadcast HTTP la webd-node-modern (poate 0 peers, dar logat)
+    nonce2 = None
     try:
         if tx is None:
             nonce2, time_lock2 = fetch_nonce_and_timelock(POOL_ADDRESS)
@@ -1102,6 +1103,8 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
         log.append(f'[WIT] Broadcast esuat: {result.get("error", result)}')
         return {'error': f'Broadcast eșuat: {result.get("error", result)}', 'log': log}
     except Exception as e:
+        if nonce2 is not None:
+            _release_local_nonce(nonce2)
         log.append(f'[WIT] Exceptie HTTP: {e}')
         return {'error': str(e), 'log': log}
 
@@ -1250,6 +1253,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(db_get_withdrawals(urllib.parse.unquote(path[len('/api/withdrawals/'):])))
 
         elif path == '/api/export':
+            token = params.get('token', '')
+            if token != NODE_SECRET_KEY:
+                self._json({'error': 'Unauthorized'}, 403)
+                return
             self._json(db_export_ledger())
 
         elif path == '/api/withdraw/challenge':
