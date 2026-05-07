@@ -220,8 +220,9 @@ def db_add_withdrawal(address: str, amount: float, tx_hex=None, tx_id=None, stat
             if row:
                 db_addr = row[0]
                 break
-        c.execute('UPDATE user_balances SET withdrawn_total=withdrawn_total+?,last_activity_ts=? WHERE address=?',
-                  (amount, int(time.time()), db_addr))
+        if status != 'failed':
+            c.execute('UPDATE user_balances SET withdrawn_total=withdrawn_total+?,last_activity_ts=? WHERE address=?',
+                      (amount, int(time.time()), db_addr))
         c.commit()
     return wid
 
@@ -806,8 +807,10 @@ def fetch_nonce_and_timelock(from_address: str = None) -> tuple:
     with _local_nonce_lock:
         if _local_nonce is None or node_nonce > _local_nonce:
             _local_nonce = node_nonce   # nodul a confirmat un tx → sincronizăm
-            db_set_local_nonce(_local_nonce)
         nonce = _local_nonce
+        # Rezervă nonce-ul imediat în lock — previne race condition la cereri simultane
+        _local_nonce += 1
+        db_set_local_nonce(_local_nonce)
 
     try:
         top_data  = _get_json(f'{NODE_LOCAL_URL}/top', timeout=5)
@@ -818,15 +821,18 @@ def fetch_nonce_and_timelock(from_address: str = None) -> tuple:
     return nonce, time_lock
 
 
-def _advance_local_nonce():
-    """Incrementează nonce-ul local după ce un tx a fost trimis cu succes."""
+def _release_local_nonce(nonce: int):
+    """Eliberează un nonce rezervat dacă tx-ul nu a fost trimis (eșec înainte de broadcast)."""
     global _local_nonce
     with _local_nonce_lock:
-        if _local_nonce is None:
-            _local_nonce = 1
-        else:
-            _local_nonce += 1
-        db_set_local_nonce(_local_nonce)
+        if _local_nonce == nonce + 1:
+            _local_nonce = nonce
+            db_set_local_nonce(_local_nonce)
+
+
+def _advance_local_nonce():
+    """Nonce-ul a fost deja incrementat la fetch — această funcție rămâne pentru compatibilitate."""
+    pass
 
 
 def _node_create_transaction(to_address: str, amount_webd: float) -> dict:
@@ -1068,6 +1074,7 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
     except Exception as e:
         log.append(f'[WIT] Exceptie socket.io: {e}')
         print(f'[WIT] tx_builder/sio exc: {e}', flush=True)
+        _release_local_nonce(nonce)
         tx = None
 
     # Metoda 2 (fallback): broadcast HTTP la webd-node-modern (poate 0 peers, dar logat)
@@ -1106,7 +1113,7 @@ def get_stats() -> dict:
     avg_reward   = sum(r['reward_amount'] for r in rewards) / len(rewards) if rewards else 0
     apy = 0.0
     if avg_reward > 0 and total_staked > 0:
-        blocks_per_day = 86400 / max(SCAN_INTERVAL, 30)
+        blocks_per_day = 86400 / 60  # WebDollar: ~1 bloc/60s
         daily = blocks_per_day * avg_reward * (1 - POOL_FEE_PCT)
         apy   = round(daily * 365 / total_staked * 100, 2)
     return {
