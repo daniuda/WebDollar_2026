@@ -215,8 +215,14 @@ def db_add_withdrawal(address: str, amount: float, tx_hex=None, tx_id=None, stat
             'INSERT INTO withdrawals (address,amount_webd,tx_hex,tx_id,status,ts) VALUES (?,?,?,?,?,?)',
             (address, amount, tx_hex, tx_id, status, int(time.time())))
         wid = cur.lastrowid
+        db_addr = address
+        for variant in _addr_variants(address):
+            row = c.execute('SELECT address FROM user_balances WHERE address=?', (variant,)).fetchone()
+            if row:
+                db_addr = row[0]
+                break
         c.execute('UPDATE user_balances SET withdrawn_total=withdrawn_total+?,last_activity_ts=? WHERE address=?',
-                  (amount, int(time.time()), address))
+                  (amount, int(time.time()), db_addr))
         c.commit()
     return wid
 
