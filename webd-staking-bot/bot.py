@@ -58,36 +58,36 @@ async def reply(update: Update, text: str, parse_mode=ParseMode.HTML):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.ensure_user(u.id, u.username or '', u.first_name or '')
-    name = u.first_name or u.username or 'prieten'
+    name = u.first_name or u.username or 'friend'
     await reply(update,
-        f"👋 Bun venit, <b>{name}</b>!\n\n"
-        f"🪙 Acesta este botul oficial <b>WebDollar Tip Bot</b>.\n"
-        f"Poți trimite WEBD altor useri direct din Telegram.\n\n"
-        f"Scrie /help pentru lista de comenzi."
+        f"👋 Welcome, <b>{name}</b>!\n\n"
+        f"🪙 This is the official <b>WebDollar Tip Bot</b>.\n"
+        f"You can send WEBD to other users directly from Telegram.\n\n"
+        f"Type /help for the list of commands."
     )
 
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await reply(update,
-        "⚙️ <b>Comenzi disponibile</b>\n\n"
-        "💰 <b>Cont</b>\n"
-        "  /tipbalance — balanța ta\n"
-        "  /wallet — wallet WEBD setat\n"
-        "  /setwallet ADRESA — setează wallet de retragere\n"
-        "  /deposit — adresa pentru depunere WEBD\n"
-        "  /withdraw SUMA — retrage WEBD la wallet-ul setat\n"
-        "  /transactions — ultimele 10 tranzacții\n\n"
+        "⚙️ <b>Available Commands</b>\n\n"
+        "💰 <b>Account</b>\n"
+        "  /tipbalance — your balance\n"
+        "  /wallet — your WEBD withdrawal wallet\n"
+        "  /setwallet ADDRESS — set withdrawal wallet\n"
+        "  /deposit — deposit address for WEBD\n"
+        "  /withdraw AMOUNT — withdraw WEBD to your wallet\n"
+        "  /transactions — last 10 transactions\n\n"
         "🎁 <b>Tips</b>\n"
-        "  /tip @user SUMA — trimite WEBD unui user\n"
-        "  /scoreboard — top 10 tipperi\n\n"
+        "  /tip @user AMOUNT — send WEBD to a user\n"
+        "  /scoreboard — top 10 tippers\n\n"
         "📊 <b>Staking &amp; Market</b>\n"
-        "  /staking — rewards și APY pool\n"
-        "  /price — prețul WEBD\n"
-        "  /stats — statistici bot\n\n"
-        "💳 <b>Altele</b>\n"
-        "  /fees — informații comisioane\n"
-        "  /topup — cumpără WEBD (în curând)"
+        "  /staking — pool rewards and stats\n"
+        "  /price — WEBD price\n"
+        "  /stats — bot statistics\n\n"
+        "💳 <b>Other</b>\n"
+        "  /fees — fee information\n"
+        "  /topup — buy WEBD (coming soon)"
     )
 
 # ── /tipbalance ───────────────────────────────────────────────────────────────
@@ -97,12 +97,12 @@ async def cmd_tipbalance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.ensure_user(u.id, u.username or '', u.first_name or '')
     user = db.get_user(u.id)
     await reply(update,
-        f"💰 <b>Balanța ta</b>\n\n"
-        f"Disponibil:       <code>{fmt_webd(user['balance'])}</code>\n"
-        f"Total primit:     <code>{fmt_webd(user['total_received'])}</code>\n"
-        f"Total trimis:     <code>{fmt_webd(user['total_tipped'])}</code>\n"
-        f"Tips date:        <b>{user['tips_given']}</b>\n"
-        f"Tips primite:     <b>{user['tips_received']}</b>"
+        f"💰 <b>Your Balance</b>\n\n"
+        f"Available:        <code>{fmt_webd(user['balance'])}</code>\n"
+        f"Total received:   <code>{fmt_webd(user['total_received'])}</code>\n"
+        f"Total sent:       <code>{fmt_webd(user['total_tipped'])}</code>\n"
+        f"Tips given:       <b>{user['tips_given']}</b>\n"
+        f"Tips received:    <b>{user['tips_received']}</b>"
     )
 
 # ── /wallet ───────────────────────────────────────────────────────────────────
@@ -113,14 +113,14 @@ async def cmd_wallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     wallet = db.get_wallet(u.id)
     if wallet:
         await reply(update,
-            f"👛 <b>Wallet-ul tău WEBD</b>\n\n"
+            f"👛 <b>Your WEBD Wallet</b>\n\n"
             f"<code>{wallet}</code>\n\n"
-            f"Folosit pentru retrageri. Schimbă cu /setwallet ADRESA"
+            f"Used for withdrawals. Change with /setwallet ADDRESS"
         )
     else:
         await reply(update,
-            "❌ Nu ai setat un wallet WEBD.\n\n"
-            "Folosește: <code>/setwallet WEBD$...</code>"
+            "❌ You have not set a WEBD wallet.\n\n"
+            "Use: <code>/setwallet WEBD$...</code>"
         )
 
 # ── /setwallet ────────────────────────────────────────────────────────────────
@@ -129,18 +129,18 @@ async def cmd_setwallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.ensure_user(u.id, u.username or '', u.first_name or '')
     if not ctx.args:
-        await reply(update, "Folosire: <code>/setwallet WEBD$...</code>")
+        await reply(update, "Usage: <code>/setwallet WEBD$...</code>")
         return
     if not _rate_ok('setwallet', u.id, 5, 86400):
-        await reply(update, "⏳ Prea multe încercări. Reîncarcă mâine.")
+        await reply(update, "⏳ Too many attempts. Try again tomorrow.")
         return
     wallet = ctx.args[0].strip()
     if not _WEBD_RE.match(wallet):
-        await reply(update, "❌ Adresă WEBD invalidă. Formatul corect: <code>WEBD$...</code> (40 caractere).")
+        await reply(update, "❌ Invalid WEBD address. Expected format: <code>WEBD$...</code> (40 characters).")
         return
     db.set_wallet(u.id, wallet)
     await reply(update,
-        f"✅ <b>Wallet setat cu succes!</b>\n\n"
+        f"✅ <b>Wallet set successfully!</b>\n\n"
         f"<code>{wallet}</code>"
     )
 
@@ -150,23 +150,23 @@ async def cmd_deposit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.ensure_user(u.id, u.username or '', u.first_name or '')
     if not TIP_BOT_ADDRESS:
-        await reply(update, "⚠️ Depunerile nu sunt configurate momentan. Contactează adminul.")
+        await reply(update, "⚠️ Deposits are not configured. Contact the admin.")
         return
     wallet = db.get_wallet(u.id)
     wallet_info = (
-        f"\n✅ Wallet detectare: <code>{short_addr(wallet)}</code>\n"
-        f"<i>Depunerile de la acest wallet sunt creditate automat.</i>"
+        f"\n✅ Detection wallet: <code>{short_addr(wallet)}</code>\n"
+        f"<i>Deposits from this wallet are credited automatically.</i>"
         if wallet else
-        f"\n⚠️ Nu ai setat un wallet! Folosește <code>/setwallet WEBD$...</code>\n"
-        f"<i>Fără wallet setat, depunerile nu pot fi identificate automat.</i>"
+        f"\n⚠️ You have not set a wallet! Use <code>/setwallet WEBD$...</code>\n"
+        f"<i>Without a wallet set, deposits cannot be identified automatically.</i>"
     )
     await reply(update,
-        f"📥 <b>Depunere WEBD în Tip Bot</b>\n\n"
-        f"Trimite WEBD la adresa botului:\n"
+        f"📥 <b>Deposit WEBD to Tip Bot</b>\n\n"
+        f"Send WEBD to the bot address:\n"
         f"<code>{TIP_BOT_ADDRESS}</code>\n"
         f"{wallet_info}\n\n"
-        f"✅ <b>Creditare automată</b> — botul scanează blockchain-ul la fiecare 30s.\n"
-        f"WEBD-ul depus participă la <b>staking</b> și primești rewards proporțional."
+        f"✅ <b>Auto-credited</b> — the bot scans the blockchain every 30s.\n"
+        f"Deposited WEBD participates in <b>staking</b> and you earn rewards proportionally."
     )
 
 # ── /withdraw ─────────────────────────────────────────────────────────────────
@@ -178,22 +178,22 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     wallet = db.get_wallet(u.id)
     if not wallet:
         await reply(update,
-            "❌ Nu ai setat un wallet WEBD.\n"
-            "Folosește mai întâi: <code>/setwallet WEBD$...</code>"
+            "❌ You have not set a WEBD wallet.\n"
+            "Use first: <code>/setwallet WEBD$...</code>"
         )
         return
 
     if not ctx.args:
         balance = db.get_balance(u.id)
         await reply(update,
-            f"Folosire: <code>/withdraw SUMA</code>\n\n"
-            f"Balanță disponibilă: <b>{fmt_webd(balance)}</b>\n"
-            f"Wallet destinație: <code>{short_addr(wallet)}</code>"
+            f"Usage: <code>/withdraw AMOUNT</code>\n\n"
+            f"Available balance: <b>{fmt_webd(balance)}</b>\n"
+            f"Destination wallet: <code>{short_addr(wallet)}</code>"
         )
         return
 
     if not _rate_ok('withdraw', u.id, 3, 3600):
-        await reply(update, "⏳ Prea multe retrageri. Încearcă din nou în câteva minute.")
+        await reply(update, "⏳ Too many withdrawals. Try again in a few minutes.")
         return
 
     try:
@@ -201,7 +201,7 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not (0 < amount < 1_000_000) or amount != amount:
             raise ValueError
     except (ValueError, OverflowError):
-        await reply(update, "❌ Sumă invalidă.")
+        await reply(update, "❌ Invalid amount.")
         return
 
     fee = staking.TX_FEE_WEBD
@@ -209,31 +209,30 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if amount < MIN_WITHDRAW:
         await reply(update,
-            f"❌ Suma minimă pentru retragere: <b>{fmt_webd(MIN_WITHDRAW)}</b>\n"
-            f"<i>(taxa rețea: {fmt_webd(fee)})</i>"
+            f"❌ Minimum withdrawal amount: <b>{fmt_webd(MIN_WITHDRAW)}</b>\n"
+            f"<i>(network fee: {fmt_webd(fee)})</i>"
         )
         return
 
     balance = db.get_balance(u.id)
     if balance < total_debit:
         await reply(update,
-            f"❌ Balanță insuficientă.\n"
-            f"Disponibil: <b>{fmt_webd(balance)}</b>\n"
-            f"Necesar (sumă + taxă): <b>{fmt_webd(total_debit)}</b>"
+            f"❌ Insufficient balance.\n"
+            f"Available: <b>{fmt_webd(balance)}</b>\n"
+            f"Required (amount + fee): <b>{fmt_webd(total_debit)}</b>"
         )
         return
 
-    # Debit imediat din DB pentru a preveni double-spend
     if not db.debit_withdraw(u.id, total_debit, wallet):
-        await reply(update, "❌ Eroare la procesarea retragerii.")
+        await reply(update, "❌ Error processing withdrawal.")
         return
 
     withdraw_id = db.add_staking_withdrawal(u.id, amount, fee, wallet)
     await reply(update,
-        f"⏳ <b>Procesare retragere...</b>\n\n"
-        f"Sumă: <b>{fmt_webd(amount)}</b>\n"
-        f"Taxă rețea: <b>{fmt_webd(fee)}</b>\n"
-        f"Destinație: <code>{short_addr(wallet)}</code>"
+        f"⏳ <b>Processing withdrawal...</b>\n\n"
+        f"Amount: <b>{fmt_webd(amount)}</b>\n"
+        f"Network fee: <b>{fmt_webd(fee)}</b>\n"
+        f"Destination: <code>{short_addr(wallet)}</code>"
     )
 
     result = await staking.execute_withdrawal(u.id, amount, wallet)
@@ -242,26 +241,25 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         tx_id = result.get('tx_id', '')
         db.update_withdrawal_tx(withdraw_id, tx_id, 'sent')
         await reply(update,
-            f"✅ <b>Retragere trimisă pe blockchain!</b>\n\n"
-            f"Sumă: <b>{fmt_webd(amount)}</b>\n"
+            f"✅ <b>Withdrawal sent to blockchain!</b>\n\n"
+            f"Amount: <b>{fmt_webd(amount)}</b>\n"
             f"TX: <code>{tx_id[:20]}...</code>\n"
-            f"Destinație: <code>{short_addr(wallet)}</code>"
+            f"Destination: <code>{short_addr(wallet)}</code>"
         )
     else:
-        # Refund dacă tx a eșuat
         db.credit_deposit(u.id, total_debit, note='refund_failed_withdraw')
         db.update_withdrawal_tx(withdraw_id, '', 'failed')
-        err = result.get('error', 'eroare necunoscută')
+        err = result.get('error', 'unknown error')
         await reply(update,
-            f"❌ <b>Retragere eșuată</b>\n\n"
-            f"Balanța a fost restituită.\n"
-            f"Eroare: <i>{err}</i>"
+            f"❌ <b>Withdrawal failed</b>\n\n"
+            f"Your balance has been refunded.\n"
+            f"Error: <i>{err}</i>"
         )
         if ADMIN_TELEGRAM_ID:
             try:
                 await ctx.bot.send_message(
                     ADMIN_TELEGRAM_ID,
-                    f"⚠️ Retragere eșuată:\nUser {u.id}, {fmt_webd(amount)}\nEroare: {err}"
+                    f"⚠️ Withdrawal failed:\nUser {u.id}, {fmt_webd(amount)}\nError: {err}"
                 )
             except Exception:
                 pass
@@ -273,41 +271,41 @@ async def cmd_tip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.ensure_user(u.id, u.username or '', u.first_name or '')
 
     if not _rate_ok('tip', u.id, 20, 3600):
-        await reply(update, "⏳ Prea multe tips. Încearcă din nou mai târziu.")
+        await reply(update, "⏳ Too many tips. Try again later.")
         return
 
     if len(ctx.args) < 2:
-        await reply(update, "Folosire: <code>/tip @username SUMA</code>")
+        await reply(update, "Usage: <code>/tip @username AMOUNT</code>")
         return
 
     target_raw = ctx.args[0].lstrip('@')
     try:
         amount = float(ctx.args[1].replace(',', '.'))
     except ValueError:
-        await reply(update, "❌ Suma invalidă.")
+        await reply(update, "❌ Invalid amount.")
         return
 
     if amount < MIN_TIP:
-        await reply(update, f"❌ Suma minimă pentru tip: <b>{fmt_webd(MIN_TIP)}</b>")
+        await reply(update, f"❌ Minimum tip amount: <b>{fmt_webd(MIN_TIP)}</b>")
         return
 
     if target_raw.lower() == (u.username or '').lower():
-        await reply(update, "❌ Nu îți poți da tip ție însuți.")
+        await reply(update, "❌ You cannot tip yourself.")
         return
 
     recipient = db.get_user_by_username(target_raw)
     if not recipient:
         await reply(update,
-            f"❌ Userul @{target_raw} nu a folosit botul încă.\n"
-            f"Roagă-l să scrie /start mai întâi."
+            f"❌ User @{target_raw} has not used the bot yet.\n"
+            f"Ask them to type /start first."
         )
         return
 
     balance = db.get_balance(u.id)
     if balance < amount:
         await reply(update,
-            f"❌ Balanță insuficientă.\n"
-            f"Disponibil: <b>{fmt_webd(balance)}</b>"
+            f"❌ Insufficient balance.\n"
+            f"Available: <b>{fmt_webd(balance)}</b>"
         )
         return
 
@@ -317,25 +315,24 @@ async def cmd_tip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if db.do_tip(u.id, recipient['telegram_id'], amount, fee):
         rec_name = recipient.get('first_name') or f"@{target_raw}"
         await reply(update,
-            f"🎉 <b>Tip trimis!</b>\n\n"
-            f"Destinatar: <b>{rec_name}</b> (@{target_raw})\n"
-            f"Sumă: <b>{fmt_webd(net)}</b>"
-            + (f"\nComision: {fmt_webd(fee)}" if fee > 0 else "")
+            f"🎉 <b>Tip sent!</b>\n\n"
+            f"Recipient: <b>{rec_name}</b> (@{target_raw})\n"
+            f"Amount: <b>{fmt_webd(net)}</b>"
+            + (f"\nFee: {fmt_webd(fee)}" if fee > 0 else "")
         )
-        # notifică destinatarul
         try:
             sender_name = u.first_name or f"@{u.username}"
             await ctx.bot.send_message(
                 recipient['telegram_id'],
-                f"🎁 Ai primit un tip de la <b>{sender_name}</b>!\n\n"
-                f"Sumă: <b>{fmt_webd(net)}</b>\n"
-                f"Balanță nouă: <b>{fmt_webd(db.get_balance(recipient['telegram_id']))}</b>",
+                f"🎁 You received a tip from <b>{sender_name}</b>!\n\n"
+                f"Amount: <b>{fmt_webd(net)}</b>\n"
+                f"New balance: <b>{fmt_webd(db.get_balance(recipient['telegram_id']))}</b>",
                 parse_mode=ParseMode.HTML
             )
         except Exception:
             pass
     else:
-        await reply(update, "❌ Eroare la procesarea tipului.")
+        await reply(update, "❌ Error processing tip.")
 
 # ── /transactions ─────────────────────────────────────────────────────────────
 
@@ -345,10 +342,10 @@ async def cmd_transactions(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txs = db.get_transactions(u.id, limit=10)
 
     if not txs:
-        await reply(update, "📋 Nu ai tranzacții încă.")
+        await reply(update, "📋 No transactions yet.")
         return
 
-    lines = ["📋 <b>Ultimele tranzacții</b>\n"]
+    lines = ["📋 <b>Last Transactions</b>\n"]
     for tx in txs:
         ts    = fmt_ts(tx['created_at'])
         amt   = fmt_webd(tx['amount'])
@@ -361,9 +358,9 @@ async def cmd_transactions(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 fr_u = tx.get('from_username') or str(tx['from_id'])
                 lines.append(f"📥 Tip ← @{fr_u}: <b>{amt}</b>  <i>{ts}</i>")
         elif typ == 'deposit':
-            lines.append(f"⬇️ Depunere: <b>{amt}</b>  <i>{ts}</i>")
+            lines.append(f"⬇️ Deposit: <b>{amt}</b>  <i>{ts}</i>")
         elif typ == 'withdraw':
-            lines.append(f"⬆️ Retragere: <b>{amt}</b>  <i>{ts}</i>")
+            lines.append(f"⬆️ Withdrawal: <b>{amt}</b>  <i>{ts}</i>")
 
     await reply(update, "\n".join(lines))
 
@@ -385,13 +382,13 @@ async def cmd_staking(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await reply(update,
         f"⛏ <b>Tip Bot Staking</b>\n\n"
-        f"👤 Balanța ta:         <b>{fmt_webd(balance)}</b>  ({pct:.2f}% din pool)\n"
-        f"💰 Total în pool:      <b>{fmt_webd(total)}</b>\n"
-        f"👥 Stakeri activi:     <b>{bot_stats['active_stakers']}</b>\n"
-        f"🏆 Blocuri găsite:     <b>{bot_stats['blocks_found']}</b>\n"
+        f"👤 Your balance:       <b>{fmt_webd(balance)}</b>  ({pct:.2f}% of pool)\n"
+        f"💰 Total in pool:      <b>{fmt_webd(total)}</b>\n"
+        f"👥 Active stakers:     <b>{bot_stats['active_stakers']}</b>\n"
+        f"🏆 Blocks found:       <b>{bot_stats['blocks_found']}</b>\n"
         f"🎁 Total rewards:      <b>{fmt_webd(bot_stats['total_rewards'])}</b>\n"
-        f"🔗 Bloc curent:        <b>{height}</b>\n\n"
-        f"<i>Depune WEBD cu /deposit — rewards distribuite automat la fiecare bloc găsit.</i>"
+        f"🔗 Current block:      <b>{height}</b>\n\n"
+        f"<i>Deposit WEBD with /deposit — rewards distributed automatically each block found.</i>"
     )
 
 # ── /price ────────────────────────────────────────────────────────────────────
@@ -400,8 +397,8 @@ async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     price_data = api.get_price()
     if not price_data:
         await reply(update,
-            "⚠️ Date de preț indisponibile momentan.\n\n"
-            "Verifică manual pe: https://webdollar.io"
+            "⚠️ Price data unavailable at the moment.\n\n"
+            "Check manually at: https://webdollar.io"
         )
         return
 
@@ -415,10 +412,10 @@ async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         change = f"{change:+.2f}%"
 
     await reply(update,
-        f"💹 <b>Prețul WEBD</b>\n\n"
-        f"Preț:         <b>${price}</b>\n"
-        f"Volum 24h:    <b>{vol}</b>\n"
-        f"Schimbare:    {arrow} <b>{change}</b>"
+        f"💹 <b>WEBD Price</b>\n\n"
+        f"Price:        <b>${price}</b>\n"
+        f"Volume 24h:   <b>{vol}</b>\n"
+        f"Change:       {arrow} <b>{change}</b>"
     )
 
 # ── /stats ────────────────────────────────────────────────────────────────────
@@ -426,10 +423,10 @@ async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     s = db.get_bot_stats()
     await reply(update,
-        f"🤖 <b>Statistici Bot</b>\n\n"
-        f"👥 Utilizatori înregistrați: <b>{s['total_users']}</b>\n"
-        f"🎁 Total tips procesate:     <b>{s['total_tips']}</b>\n"
-        f"💰 Volum total tips:         <b>{fmt_webd(s['total_volume'])}</b>"
+        f"🤖 <b>Bot Statistics</b>\n\n"
+        f"👥 Registered users:   <b>{s['total_users']}</b>\n"
+        f"🎁 Total tips:         <b>{s['total_tips']}</b>\n"
+        f"💰 Total tip volume:   <b>{fmt_webd(s['total_volume'])}</b>"
     )
 
 # ── /scoreboard ───────────────────────────────────────────────────────────────
@@ -437,13 +434,13 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_scoreboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     top = db.get_top_tippers(10)
     if not top:
-        await reply(update, "🏆 Nu există tipperi încă. Fii primul cu /tip!")
+        await reply(update, "🏆 No tippers yet. Be the first with /tip!")
         return
 
-    lines = ["🏆 <b>Top 10 Tipperi</b>\n"]
+    lines = ["🏆 <b>Top 10 Tippers</b>\n"]
     medals = ['🥇','🥈','🥉'] + ['🏅'] * 7
     for i, t in enumerate(top):
-        name = t.get('first_name') or t.get('username') or 'Anonim'
+        name = t.get('first_name') or t.get('username') or 'Anonymous'
         if t.get('username'):
             name = f"@{t['username']}"
         lines.append(
@@ -456,23 +453,23 @@ async def cmd_scoreboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_fees(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     fee_pct = TIP_FEE_PCT * 100
     await reply(update,
-        f"💳 <b>Comisioane</b>\n\n"
-        f"Tips:         <b>{'Gratuit' if fee_pct == 0 else f'{fee_pct:.1f}%'}</b>\n"
-        f"Depunere:     <b>Gratuit</b>\n"
-        f"Retragere:    <b>Gratuit</b> (taxe rețea WebDollar aplicate)\n\n"
-        f"<i>Comisioanele pot fi modificate la discreția operatorului.</i>"
+        f"💳 <b>Fees</b>\n\n"
+        f"Tips:         <b>{'Free' if fee_pct == 0 else f'{fee_pct:.1f}%'}</b>\n"
+        f"Deposit:      <b>Free</b>\n"
+        f"Withdrawal:   <b>Free</b> (WebDollar network fees apply)\n\n"
+        f"<i>Fees may be changed at the operator's discretion.</i>"
     )
 
 # ── /topup ────────────────────────────────────────────────────────────────────
 
 async def cmd_topup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await reply(update,
-        "💳 <b>Cumpără WEBD</b>\n\n"
-        "🚧 <i>Această funcție este în curs de dezvoltare.</i>\n\n"
-        "Momentan poți achiziționa WEBD de pe:\n"
+        "💳 <b>Buy WEBD</b>\n\n"
+        "🚧 <i>This feature is under development.</i>\n\n"
+        "You can currently buy WEBD on:\n"
         "• <a href='https://webdollar.io'>webdollar.io</a>\n"
-        "• Exchange-uri listate\n\n"
-        "Apoi folosește /deposit pentru a depune în bot."
+        "• Listed exchanges\n\n"
+        "Then use /deposit to add it to the bot."
     )
 
 # ── /admin credit (admin only) ───────────────────────────────────────────────
@@ -480,28 +477,27 @@ async def cmd_topup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_admin_credit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     if u.id != ADMIN_TELEGRAM_ID:
-        await reply(update, "❌ Acces interzis.")
+        await reply(update, "❌ Access denied.")
         return
-    # /credit USER_ID SUMA
     if len(ctx.args) < 2:
-        await reply(update, "Folosire: /credit USER_ID SUMA")
+        await reply(update, "Usage: /credit USER_ID AMOUNT")
         return
     try:
         uid    = int(ctx.args[0])
         amount = float(ctx.args[1])
     except ValueError:
-        await reply(update, "❌ Parametri invalizi.")
+        await reply(update, "❌ Invalid parameters.")
         return
     target = db.get_user(uid)
     if not target:
-        await reply(update, f"❌ Userul {uid} nu există.")
+        await reply(update, f"❌ User {uid} does not exist.")
         return
     db.credit_deposit(uid, amount, note='admin_credit')
-    await reply(update, f"✅ Creditat {fmt_webd(amount)} → user {uid}")
+    await reply(update, f"✅ Credited {fmt_webd(amount)} → user {uid}")
     try:
         await ctx.bot.send_message(
             uid,
-            f"✅ <b>{fmt_webd(amount)}</b> a fost creditat în contul tău de admin.",
+            f"✅ <b>{fmt_webd(amount)}</b> has been credited to your account by admin.",
             parse_mode=ParseMode.HTML
         )
     except Exception:
@@ -512,7 +508,7 @@ async def cmd_admin_credit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def post_init(app: Application):
     """Porneste scan loop dupa ce botul este initializat."""
     asyncio.create_task(staking.scan_loop(app.bot))
-    log.info('Scan loop pornit.')
+    log.info('Scan loop started.')
 
 def build_app() -> Application:
     db.init_db()
@@ -538,7 +534,7 @@ def build_app() -> Application:
 
 if __name__ == '__main__':
     if not TELEGRAM_TOKEN:
-        print('EROARE: TELEGRAM_TOKEN nu este setat în .env')
+        print('ERROR: TELEGRAM_TOKEN is not set in .env')
         exit(1)
-    log.info('Bot Telegram pornit...')
+    log.info('Telegram bot started...')
     build_app().run_polling(allowed_updates=Update.ALL_TYPES)

@@ -366,10 +366,10 @@ async def _do_scan(bot):
                 try:
                     await bot.send_message(
                         tg_id,
-                        f"✅ <b>Depunere confirmată automat!</b>\n\n"
-                        f"Sumă: <b>{amount:,.4f} WEBD</b>\n"
-                        f"Bloc: <b>#{h}</b>\n\n"
-                        f"Balanța ta a fost creditată. Ești acum în staking! ⛏",
+                        f"✅ <b>Deposit confirmed automatically!</b>\n\n"
+                        f"Amount: <b>{amount:,.4f} WEBD</b>\n"
+                        f"Block: <b>#{h}</b>\n\n"
+                        f"Your balance has been credited. You are now staking! ⛏",
                         parse_mode='HTML'
                     )
                 except Exception:
@@ -399,10 +399,10 @@ async def _distribute_reward(bot, height: int, reward: float):
         try:
             await bot.send_message(
                 u['telegram_id'],
-                f"⛏ <b>Bloc găsit! Reward primit!</b>\n\n"
-                f"Bloc: <b>#{height}</b>\n"
-                f"Reward tău: <b>{share:,.4f} WEBD</b>\n"
-                f"<i>Cotă ta: {u['balance']:.2f} / {total:.2f} WEBD total</i>",
+                f"⛏ <b>Block found! Reward received!</b>\n\n"
+                f"Block: <b>#{height}</b>\n"
+                f"Your reward: <b>{share:,.4f} WEBD</b>\n"
+                f"<i>Your share: {u['balance']:.2f} / {total:.2f} WEBD total</i>",
                 parse_mode='HTML'
             )
         except Exception:
