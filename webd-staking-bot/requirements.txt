@@ -1,0 +1,5 @@
+python-telegram-bot==22.7
+flask==3.0.2
+twilio==8.10.0
+python-dotenv==1.0.1
+cryptography>=42.0.0

@@ -71,6 +71,20 @@ BACKUP_KEEP      = int(staking_cfg.get('backup_keep', 168))             # păstr
 BACKUP_DIR       = BASE_DIR / 'backups'
 CHALLENGE_TTL    = 300
 
+# ── Rate limiting per IP (pentru challenge + withdraw HTTP) ───────────────────
+_ip_buckets: dict = {}
+_ip_lock = threading.Lock()
+
+def _ip_rate_ok(ip: str, max_calls: int = 5, window: int = 600) -> bool:
+    now = time.time()
+    with _ip_lock:
+        bucket = [t for t in _ip_buckets.get(ip, []) if now - t < window]
+        if len(bucket) >= max_calls:
+            return False
+        bucket.append(now)
+        _ip_buckets[ip] = bucket
+    return True
+
 # ── database ───────────────────────────────────────────────────────────────────
 _db_lock = threading.Lock()
 
@@ -682,7 +696,8 @@ def _socketio_broadcast_tx(tx_hex: str, tx_id: str = '') -> dict:
         @sio.on('HelloNode')
         def on_hello_node(data):
             try:
-                sio.emit('transactions/new-pending-transaction', {'buffer': tx_bytes})
+                sio.emit('transactions/new-pending-transaction',
+                         {'buffer': {'type': 'Buffer', 'data': list(tx_bytes)}})
                 result['done'] = True
                 sio_log.append(f'[SIO] HelloNode primit, tx {len(tx_bytes)} bytes trimis -> {node_url}')
                 print(f'[SIO] HelloNode primit, tx {len(tx_bytes)} bytes trimis -> {node_url}', flush=True)
@@ -1253,13 +1268,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json(db_get_withdrawals(urllib.parse.unquote(path[len('/api/withdrawals/'):])))
 
         elif path == '/api/export':
-            token = params.get('token', '')
+            auth_header = self.headers.get('Authorization', '')
+            token_from_header = auth_header.removeprefix('Bearer ').strip()
+            token = token_from_header or params.get('token', '')
             if token != NODE_SECRET_KEY:
                 self._json({'error': 'Unauthorized'}, 403)
                 return
+            ip = self.client_address[0]
+            print(f'[EXPORT] Acces de la {ip} la {time.strftime("%Y-%m-%d %H:%M:%S")}', flush=True)
             self._json(db_export_ledger())
 
         elif path == '/api/withdraw/challenge':
+            ip = self.client_address[0]
+            if not _ip_rate_ok(ip, max_calls=5, window=600):
+                self._json({'error': 'Prea multe cereri. Încearcă din nou în 10 minute.'}, 429)
+                return
             addr   = params.get('address', '').strip()
             amount = float(params.get('amount', 0) or 0)
             if not addr or amount <= 0:
@@ -1276,6 +1299,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.rstrip('/')
         if path == '/api/withdraw':
+            ip = self.client_address[0]
+            if not _ip_rate_ok(ip, max_calls=5, window=600):
+                self._json({'error': 'Prea multe cereri. Încearcă din nou în 10 minute.'}, 429)
+                return
             body       = self._body()
             address    = (body.get('address') or '').strip()
             amount     = float(body.get('amount', 0) or 0)

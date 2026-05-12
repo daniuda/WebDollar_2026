@@ -1,0 +1,17 @@
+[Unit]
+Description=WebDollar Staking Tip Bot (Telegram + WhatsApp)
+After=network.target webd-staking.service
+
+[Service]
+Type=forking
+User=ubuntu
+WorkingDirectory=/home/ubuntu/webd-staking-bot
+ExecStart=/bin/bash /home/ubuntu/webd-staking-bot/start.sh
+Restart=always
+RestartSec=10
+EnvironmentFile=/home/ubuntu/webd-staking-bot/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

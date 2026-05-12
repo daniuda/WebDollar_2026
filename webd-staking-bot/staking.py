@@ -1,11 +1,11 @@
 """
 Scanner depuneri on-chain + distribuitor rewards + executor retrageri automate.
 """
-import asyncio, logging, json, ssl, urllib.request, urllib.parse
+import asyncio, logging, json, ssl, threading, urllib.request, urllib.parse
 
 from config import (
     TIP_BOT_SEED, TIP_BOT_PUBKEY, TIP_BOT_ADDRESS,
-    NODE_URL, NODE_LOCAL_URL, BROADCAST_URL,
+    NODE_URL, NODE_LOCAL_URL, BROADCAST_URL, NODE_SECRET_KEY,
 )
 import db
 
@@ -14,16 +14,52 @@ log = logging.getLogger('webd-staking')
 SCAN_INTERVAL = 30      # secunde intre scanuri
 TX_FEE_WEBD   = 10.0   # fee retragere (costa din balanta userului)
 
-_ssl_ctx = ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode    = ssl.CERT_NONE
+# ── Nonce local persistent (evita conflicte la retragerile simultane) ─────────
+_local_nonce: int | None = None
+_local_nonce_lock = threading.Lock()
 
+def _get_nonce_and_timelock() -> tuple[int, int]:
+    """Returneaza (nonce, time_lock) sincronizat cu nodul + local persistent."""
+    global _local_nonce
+    node_nonce = 0
+    try:
+        addr_enc = urllib.parse.quote(TIP_BOT_ADDRESS, safe='')
+        nd = _get(f'{NODE_LOCAL_URL}/address/nonce/{addr_enc}')
+        if nd and isinstance(nd, dict):
+            node_nonce = int(nd.get('nonce', 0))
+    except Exception:
+        pass
+
+    with _local_nonce_lock:
+        if _local_nonce is None or node_nonce > _local_nonce:
+            _local_nonce = node_nonce
+        nonce = _local_nonce
+        _local_nonce += 1
+
+    time_lock = 0
+    try:
+        top = _get(f'{NODE_LOCAL_URL}/top')
+        if top and isinstance(top, dict):
+            time_lock = max(0, int(top.get('top', 0)) - 1)
+    except Exception:
+        pass
+
+    return nonce, time_lock
+
+def _release_nonce(nonce: int):
+    """Elibereaza nonce rezervat daca TX a esuat inainte de broadcast."""
+    global _local_nonce
+    with _local_nonce_lock:
+        if _local_nonce == nonce + 1:
+            _local_nonce = nonce
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 def _get(url: str) -> dict | list | None:
     try:
-        with urllib.request.urlopen(url, timeout=8, context=_ssl_ctx) as r:
+        ctx = ssl.create_default_context() if url.startswith('https://') else None
+        kw = {'context': ctx} if ctx else {}
+        with urllib.request.urlopen(url, timeout=8, **kw) as r:
             return json.loads(r.read().decode())
     except Exception:
         return None
@@ -35,7 +71,9 @@ def _post(url: str, data: dict) -> dict:
             url, data=payload,
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
+        ctx = ssl.create_default_context() if url.startswith('https://') else None
+        kw = {'context': ctx} if ctx else {}
+        with urllib.request.urlopen(req, timeout=10, **kw) as r:
             return json.loads(r.read().decode())
     except Exception as e:
         return {'error': str(e)}
@@ -118,28 +156,139 @@ def _sync_get_nonce(address: str) -> int:
     return n if n is not None else 0
 
 
+# ── Socket.io broadcast ───────────────────────────────────────────────────────
+
+_SIO_NODES = [
+    NODE_LOCAL_URL,                   # VPS local — garantat disponibil, propaga la peers
+    'http://daniuda.ddns.net:8080',   # nod minier principal (fallback)
+]
+
+def _sio_broadcast(tx_hex: str, tx_id: str = '') -> dict:
+    """Broadcast TX via socket.io la primul nod disponibil."""
+    try:
+        import socketio as sio_lib
+    except ImportError:
+        return {'ok': False, 'error': 'socketio indisponibil'}
+    import threading, uuid as _uuid
+
+    tx_bytes = bytes.fromhex(tx_hex)
+
+    for node_url in _SIO_NODES:
+        result = {'done': False, 'accepted': False, 'error': None}
+        ready_ev = threading.Event()
+
+        sio = sio_lib.Client(logger=False, engineio_logger=False, reconnection=False)
+
+        @sio.event
+        def connect():
+            pass
+
+        @sio.on('HelloNode')
+        def on_hello(data):
+            try:
+                # Send buffer as JSON {type:'Buffer', data:[...]} so Node.js
+                # _processBufferArray converts it to a proper Buffer — raw bytes
+                # via binary socket.io attachment are NOT reliably converted.
+                sio.emit('transactions/new-pending-transaction', {
+                    'buffer': {'type': 'Buffer', 'data': list(tx_bytes)}
+                })
+                result['done'] = True
+            except Exception as exc:
+                result['error'] = str(exc)
+            threading.Timer(8.0, ready_ev.set).start()
+
+        @sio.on('transactions/new-pending-transaction-id')
+        def on_accepted(data):
+            result['accepted'] = True
+            ready_ev.set()
+
+        @sio.event
+        def connect_error(data):
+            result['error'] = str(data)
+            ready_ev.set()
+
+        q = {'msg': 'HelloNode', 'version': '1.3.24', 'uuid': str(_uuid.uuid4()),
+             'nodeType': '0', 'nodeConsensusType': '1', 'domain': 'browser'}
+        qs = '&'.join(f'{k}={v}' for k, v in q.items())
+        try:
+            sio.connect(f'{node_url}?{qs}', transports=['websocket', 'polling'])
+            ready_ev.wait(timeout=20)
+        except Exception as exc:
+            result['error'] = str(exc)
+        finally:
+            try: sio.disconnect()
+            except Exception: pass
+
+        if result['done']:
+            log.info(f'[SIO] TX {tx_id[:16]}... trimis -> {node_url} (accepted={result["accepted"]})')
+            return {'ok': True, 'node': node_url, 'accepted': result['accepted']}
+        log.warning(f'[SIO] {node_url} esuat: {result["error"]}')
+
+    return {'ok': False, 'error': 'Toate nodurile socket.io indisponibile'}
+
+
 # ── Retragere automata ────────────────────────────────────────────────────────
 
 async def execute_withdrawal(telegram_id: int, amount: float, dest_wallet: str) -> dict:
-    """Semneaza si trimite tranzactia via nodul legacy sincronizat. Returneaza {ok, tx_id, error}."""
+    """Construieste TX cu tx_builder, broadcast via socket.io. Fallback la nod legacy."""
     try:
-        import urllib.parse
+        from tx_builder import build_signed_tx
+    except ImportError as e:
+        return {'ok': False, 'error': f'tx_builder indisponibil: {e}'}
+
+    # Nonce local persistent + timeLock direct din /top
+    try:
+        nonce, time_lock = await asyncio.to_thread(_get_nonce_and_timelock)
+    except Exception as e:
+        return {'ok': False, 'error': f'Nu pot prelua nonce/timeLock: {e}'}
+    if not time_lock:
+        _release_nonce(nonce)
+        log.error('[WIT] timeLock=0 — nodul local indisponibil, TX anulat')
+        return {'ok': False, 'error': 'Nod indisponibil — încearcă din nou'}
+
+    # Build TX semnat
+    try:
+        tx = build_signed_tx(
+            from_address=TIP_BOT_ADDRESS,
+            private_key_hex=TIP_BOT_SEED,
+            public_key_hex=TIP_BOT_PUBKEY,
+            to_address=dest_wallet,
+            amount_webd=round(amount, 4),
+            nonce=nonce,
+            time_lock=time_lock,
+        )
+    except Exception as e:
+        _release_nonce(nonce)
+        log.exception('build_signed_tx error')
+        return {'ok': False, 'error': f'Semnare TX esuata: {e}'}
+
+    tx_id = tx['tx_id']
+    log.info(f'[WIT] nonce={nonce} timeLock={time_lock} txId={tx_id[:20]} amount={amount}')
+
+    # Broadcast via socket.io (primar)
+    sio_res = await asyncio.to_thread(_sio_broadcast, tx['serialized_hex'], tx_id)
+    if sio_res.get('ok'):
+        log.info(f'Retragere broadcast sio: txId={tx_id} amount={amount} to={dest_wallet}')
+        return {'ok': True, 'tx_id': tx_id}
+
+    # Fallback: nod legacy HTTP broadcast
+    log.warning(f'[WIT] socket.io esuat: {sio_res.get("error")}, fallback nod legacy')
+    try:
         from_enc = urllib.parse.quote(TIP_BOT_ADDRESS, safe='')
         to_enc   = urllib.parse.quote(dest_wallet, safe='')
         url = (
-            f'http://127.0.0.1:8081/SECRET_SECRET_SECRET_LONG_SECRET_123456'
-            f'/wallets/create-transaction/{from_enc}/{to_enc}/{amount}/{TX_FEE_WEBD}'
+            f'{NODE_LOCAL_URL}/{NODE_SECRET_KEY}'
+            f'/wallets/create-transaction/{from_enc}/{to_enc}/{amount:.4f}/{TX_FEE_WEBD}'
         )
         result = await asyncio.to_thread(_get, url)
-        if not result:
-            return {'ok': False, 'error': 'Nod legacy nu raspunde'}
-        if not result.get('result'):
-            return {'ok': False, 'error': result.get('message') or result.get('reason') or str(result)}
-        tx_id = result.get('txId') or result.get('tx_id') or ''
-        log.info(f'Retragere trimisa via nod legacy: txId={tx_id} amount={amount} to={dest_wallet}')
-        return {'ok': True, 'tx_id': tx_id}
+        if result and result.get('result'):
+            fallback_id = result.get('txId') or result.get('tx_id') or tx_id
+            log.info(f'Retragere via nod legacy fallback: txId={fallback_id}')
+            return {'ok': True, 'tx_id': fallback_id}
+        err = (result or {}).get('message') or str(result)
+        return {'ok': False, 'error': f'Fallback nod legacy: {err}'}
     except Exception as e:
-        log.exception('execute_withdrawal error')
+        log.exception('execute_withdrawal fallback error')
         return {'ok': False, 'error': str(e)}
 
 
