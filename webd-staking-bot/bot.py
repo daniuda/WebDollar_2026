@@ -50,6 +50,10 @@ def short_addr(addr: str) -> str:
     if not addr: return '—'
     return addr[:10] + '...' + addr[-6:]
 
+def compute_fee(amount: float) -> float:
+    """Network base fee (10) + 1% service fee, total capped at 375 WEBD."""
+    return min(10.0 + amount * 0.01, 375.0)
+
 async def reply(update: Update, text: str, parse_mode=ParseMode.HTML):
     await update.message.reply_text(text, parse_mode=parse_mode, disable_web_page_preview=True)
 
@@ -83,6 +87,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "  /scoreboard — top 10 tippers\n\n"
         "📊 <b>Staking &amp; Market</b>\n"
         "  /staking — pool rewards and stats\n"
+        "  /miner — miner status and blocks found\n"
         "  /price — WEBD price\n"
         "  /stats — bot statistics\n\n"
         "💳 <b>Other</b>\n"
@@ -204,13 +209,13 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await reply(update, "❌ Invalid amount.")
         return
 
-    fee = staking.TX_FEE_WEBD
+    fee = compute_fee(amount)
     total_debit = amount + fee
 
     if amount < MIN_WITHDRAW:
         await reply(update,
             f"❌ Minimum withdrawal amount: <b>{fmt_webd(MIN_WITHDRAW)}</b>\n"
-            f"<i>(network fee: {fmt_webd(fee)})</i>"
+            f"<i>(fee: {fmt_webd(fee)})</i>"
         )
         return
 
@@ -228,11 +233,14 @@ async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     withdraw_id = db.add_staking_withdrawal(u.id, amount, fee, wallet)
+    net_fee = staking.TX_FEE_WEBD
+    service_fee = round(fee - net_fee, 6)
     await reply(update,
         f"⏳ <b>Processing withdrawal...</b>\n\n"
         f"Amount: <b>{fmt_webd(amount)}</b>\n"
-        f"Network fee: <b>{fmt_webd(fee)}</b>\n"
-        f"Destination: <code>{short_addr(wallet)}</code>"
+        f"Fee: <b>{fmt_webd(fee)}</b>"
+        + (f" (10 network + {fmt_webd(service_fee)} service)" if service_fee > 0 else "") +
+        f"\nDestination: <code>{short_addr(wallet)}</code>"
     )
 
     result = await staking.execute_withdrawal(u.id, amount, wallet)
@@ -391,6 +399,37 @@ async def cmd_staking(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"<i>Deposit WEBD with /deposit — rewards distributed automatically each block found.</i>"
     )
 
+# ── /miner ───────────────────────────────────────────────────────────────────
+
+async def cmd_miner(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    from config import TIP_BOT_ADDRESS, NODE_LOCAL_URL
+    import urllib.parse, staking as _staking
+
+    top_data   = await asyncio.to_thread(_staking._get, f'{NODE_LOCAL_URL}/top')
+    height     = top_data.get('top', '—') if isinstance(top_data, dict) else '—'
+    synced     = top_data.get('is_synchronized', False) if isinstance(top_data, dict) else False
+    behind     = top_data.get('secondsBehind', 0) if isinstance(top_data, dict) else 0
+
+    addr_enc   = urllib.parse.quote(TIP_BOT_ADDRESS, safe='')
+    bal_data   = await asyncio.to_thread(_staking._get, f'{NODE_LOCAL_URL}/address/balance/{addr_enc}')
+    on_chain   = bal_data.get('balance', 0) if isinstance(bal_data, dict) else 0
+
+    bot_stats  = db.get_staking_stats()
+    blocks     = bot_stats.get('blocks_found', 0)
+    rewards    = bot_stats.get('total_rewards', 0.0)
+
+    sync_icon  = '🟢' if synced and behind < 120 else '🟡' if behind < 600 else '🔴'
+    behind_str = f'{int(behind)}s behind' if behind else 'live'
+
+    await reply(update,
+        f"⛏ <b>Miner Status</b>\n\n"
+        f"🔗 Current block:      <b>{height}</b>  {sync_icon} {behind_str}\n"
+        f"💰 Miner wallet:       <b>{fmt_webd(on_chain)}</b>\n"
+        f"🏆 Blocks found:       <b>{blocks}</b>\n"
+        f"🎁 Total mined:        <b>{fmt_webd(rewards)}</b>\n\n"
+        f"<code>{TIP_BOT_ADDRESS}</code>"
+    )
+
 # ── /price ────────────────────────────────────────────────────────────────────
 
 async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -456,7 +495,10 @@ async def cmd_fees(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"💳 <b>Fees</b>\n\n"
         f"Tips:         <b>{'Free' if fee_pct == 0 else f'{fee_pct:.1f}%'}</b>\n"
         f"Deposit:      <b>Free</b>\n"
-        f"Withdrawal:   <b>Free</b> (WebDollar network fees apply)\n\n"
+        f"Withdrawal:   <b>10 WEBD + 1% of amount</b> (max 375 WEBD total)\n"
+        f"  Example: 100 WEBD → fee {fmt_webd(compute_fee(100))}\n"
+        f"  Example: 1000 WEBD → fee {fmt_webd(compute_fee(1000))}\n"
+        f"  Example: 40000 WEBD → fee {fmt_webd(compute_fee(40000))}\n\n"
         f"<i>Fees may be changed at the operator's discretion.</i>"
     )
 
@@ -524,6 +566,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler('tip',          cmd_tip))
     app.add_handler(CommandHandler('transactions', cmd_transactions))
     app.add_handler(CommandHandler('staking',      cmd_staking))
+    app.add_handler(CommandHandler('miner',        cmd_miner))
     app.add_handler(CommandHandler('price',        cmd_price))
     app.add_handler(CommandHandler('stats',        cmd_stats))
     app.add_handler(CommandHandler('scoreboard',   cmd_scoreboard))
