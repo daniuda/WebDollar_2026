@@ -65,7 +65,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = u.first_name or u.username or 'friend'
     await reply(update,
         f"👋 Welcome, <b>{name}</b>!\n\n"
-        f"🪙 This is the official <b>WebDollar Tip Bot</b>.\n"
+        f"🪙 This is the <b>WebDollar Tip Bot</b>.\n"
         f"You can send WEBD to other users directly from Telegram.\n\n"
         f"Type /help for the list of commands."
     )
