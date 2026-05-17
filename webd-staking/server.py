@@ -20,7 +20,7 @@ if sys.platform == 'win32':
 
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from tx_builder import build_signed_tx, build_signed_tx_multi, verify_signature, PAYOUT_FEE_PCT
+    from tx_builder import build_signed_tx, build_signed_tx_multi, verify_signature, PAYOUT_FEE_PCT, ripemd160_sha256, decode_webd_address
     HAS_TX_BUILDER = True
 except ImportError as _e:
     HAS_TX_BUILDER = False
@@ -1040,6 +1040,14 @@ def process_withdrawal(address: str, amount: float, pubkey_hex: str,
     if not verify_signature(pubkey_hex, message, sig_hex):
         return {'error': 'Semnătură invalidă. Verifică că ai importat wallet-ul corect.'}
 
+    try:
+        expected = decode_webd_address(address)
+        actual   = ripemd160_sha256(bytes.fromhex(pubkey_hex))
+        if expected != actual:
+            return {'error': 'Cheia publică nu corespunde adresei furnizate.'}
+    except Exception:
+        return {'error': 'pubkey_hex sau adresă invalidă.'}
+
     bal = db_get_balance(address)
     if bal['available'] < amount:
         return {'error': f'Fonduri insuficiente: disponibil {bal["available"]:.4f} WEBD, cerut {amount:.4f}'}
@@ -1175,7 +1183,7 @@ def get_node_status() -> dict:
         cs = chain.get('circulatingSupply') or chain.get('supply') or chain.get('totalSupply')
         if cs is not None:
             cs = float(cs)
-            result['circulating_supply'] = cs / 10_000_000 if cs > 100_000_000_000 else cs / 10_000 if cs > 1_000_000 else cs
+            result['circulating_supply'] = cs / 100_000 if cs > 100_000_000_000 else cs / 10_000 if cs > 1_000_000 else cs
         if result['mining_balance'] and result['circulating_supply']:
             bal = result['mining_balance']
             sup = result['circulating_supply']
