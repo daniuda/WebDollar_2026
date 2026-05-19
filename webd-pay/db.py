@@ -1,10 +1,11 @@
-import sqlite3, uuid, json
+import sqlite3, uuid, json, os
 from datetime import datetime, timezone
 
-DB_PATH = 'payments.db'
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'payments.db')
 
 def _conn():
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(DB_PATH, timeout=10)
+    c.execute("PRAGMA journal_mode=WAL")
     c.row_factory = sqlite3.Row
     return c
 
@@ -57,8 +58,10 @@ def get_payment(payment_id):
 
 def update_payment_paid(payment_id, paid_amount, tx_hash=''):
     with _conn() as c:
-        c.execute("""UPDATE payments SET status='paid', paid_amount=?, tx_hash=?,
+        cur = c.execute("""UPDATE payments SET status='paid', paid_amount=?, tx_hash=?,
                      confirmations=1 WHERE id=?""", (paid_amount, tx_hash, payment_id))
+        if cur.rowcount == 0:
+            raise KeyError(f"payment {payment_id} not found")
 
 def update_webhook_status(payment_id, status, attempts):
     with _conn() as c:
@@ -84,7 +87,13 @@ def get_payments_needing_webhook():
 def expire_old_payments():
     now = datetime.now(timezone.utc).isoformat()
     with _conn() as c:
-        c.execute("UPDATE payments SET status='expired' WHERE status='pending' AND expires_at <= ?", (now,))
+        c.execute(
+            "UPDATE address_pool SET in_use=0, payment_id=NULL"
+            " WHERE address IN (SELECT pay_to_address FROM payments"
+            " WHERE status='pending' AND expires_at <= ?)", (now,))
+        c.execute(
+            "UPDATE payments SET status='expired'"
+            " WHERE status='pending' AND expires_at <= ?", (now,))
 
 def seed_address_pool(addresses):
     with _conn() as c:
@@ -92,13 +101,14 @@ def seed_address_pool(addresses):
                       [(a,) for a in addresses])
 
 def get_available_address():
+    # Atomic: single UPDATE...RETURNING prevents TOCTOU race under concurrent requests
     with _conn() as c:
-        row = c.execute("SELECT address FROM address_pool WHERE in_use=0 LIMIT 1").fetchone()
-        if not row:
-            return None
-        addr = row['address']
-        c.execute("UPDATE address_pool SET in_use=1 WHERE address=?", (addr,))
-    return addr
+        row = c.execute(
+            "UPDATE address_pool SET in_use=1"
+            " WHERE address=(SELECT address FROM address_pool WHERE in_use=0 LIMIT 1)"
+            " RETURNING address"
+        ).fetchone()
+    return row['address'] if row else None
 
 def release_address(address):
     with _conn() as c:
