@@ -1,0 +1,18 @@
+[Unit]
+Description=WebDollar Node (payment server)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/webd-node
+ExecStart=/home/ubuntu/.nvm/versions/node/v16.20.2/bin/node index.js
+Environment=SERVER_PORT=8080
+Environment=MAX_BROWSER=0
+Environment=MAX_TERMINAL=0
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
