@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Docs — WebDollar Payments</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; max-width: 720px; margin: 48px auto; padding: 0 24px; }
+    h1 { color: #f59e0b; margin-bottom: 8px; } h2 { margin: 32px 0 8px; color: #7dd3fc; }
+    p { color: #94a3b8; margin-bottom: 12px; line-height: 1.6; }
+    pre { background: #1a1f2e; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; }
+    code { color: #6ee7b7; }
+  </style>
+</head>
+<body>
+  <h1>WebDollar Payment API</h1>
+  <p>Base URL: <code>https://pay.webdollar.cloudns.nz</code></p>
+
+  <h2>Create payment session</h2>
+  <pre><code>POST /api/v1/payment/create
+Content-Type: application/json
+
+{
+  "amount": 100.5,          // required — WEBD amount
+  "merchant_id": "string",  // optional
+  "webhook_url": "https://",// optional
+  "redirect_url": "https://",// optional — redirect after payment
+  "metadata": {}            // optional — any JSON object
+}
+
+Response 200:
+{
+  "payment_id": "uuid",
+  "pay_to": "WEBD$...",
+  "amount_webd": 100.5,
+  "expires_at": "ISO8601",
+  "payment_url": "https://pay.webdollar.cloudns.nz/p/uuid",
+  "secret": "hex64"   // save this — used to verify webhook signatures
+}</code></pre>
+
+  <h2>Check payment status</h2>
+  <pre><code>GET /api/v1/payment/{payment_id}/status
+
+Response 200:
+{
+  "payment_id": "uuid",
+  "status": "pending" | "paid" | "expired" | "overpaid",
+  "amount_webd": 100.5,
+  "paid_amount_webd": 100.5,
+  "confirmations": 1,
+  "tx_hash": "..."
+}</code></pre>
+
+  <h2>Webhook verification</h2>
+  <pre><code>X-WEBD-Signature: sha256hex(secret + raw_body)
+
+import hmac, hashlib
+sig = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+assert sig == request.headers['X-WEBD-Signature']</code></pre>
+
+  <h2>Rate limits</h2>
+  <p>Max 10 payment sessions per IP per hour. No authentication required.</p>
+</body>
+</html>

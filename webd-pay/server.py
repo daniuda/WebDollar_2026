@@ -95,6 +95,11 @@ def index():
     return send_from_directory('static', 'index.html')
 
 
+@app.get('/api/v1/docs')
+def api_docs():
+    return send_from_directory('static', 'docs.html')
+
+
 # ── Background worker ─────────────────────────────────────────────────────────
 
 def check_pending_payments():
