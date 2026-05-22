@@ -85,7 +85,9 @@ def payment_status(payment_id):
 
 @app.get('/p/<payment_id>')
 def payment_page(payment_id):
-    return send_from_directory('static', 'pay.html')
+    with open(os.path.join(app.static_folder, 'pay.html')) as f:
+        html = f.read().replace('WDEXP_URL_PLACEHOLDER', config.WDEXP_URL)
+    return html
 
 
 @app.get('/')
