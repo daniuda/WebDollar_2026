@@ -130,14 +130,24 @@
         });
         const data = await r.json();
         if (r.ok && data.txId) {
-          showResult('success', '✓ Tranzacție trimisă cu succes!<br>TX ID: <strong>' + data.txId + '</strong>');
+          const el = document.getElementById('result');
+          el.className = 'result success';
+          el.innerHTML = '✓ Tranzacție trimisă cu succes!<br>TX ID: <strong id="txIdSpan"></strong>';
+          document.getElementById('txIdSpan').textContent = data.txId;
+          el.style.display = 'block';
           document.getElementById('privkey').value = '';
           document.getElementById('myAddress').style.display = 'none';
         } else {
-          showResult('error', 'Eroare: ' + (data.error || 'necunoscută'));
+          const errEl = document.getElementById('result');
+          errEl.className = 'result error';
+          errEl.textContent = 'Eroare: ' + (data.error || 'necunoscută');
+          errEl.style.display = 'block';
         }
       } catch (e) {
-        showResult('error', 'Eroare de rețea: ' + e.message);
+        const netEl = document.getElementById('result');
+        netEl.className = 'result error';
+        netEl.textContent = 'Eroare de rețea: ' + e.message;
+        netEl.style.display = 'block';
       } finally {
         btn.disabled = false;
         btn.textContent = '► Trimite WEBD';
