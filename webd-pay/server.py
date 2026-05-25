@@ -140,13 +140,15 @@ def transfer_send():
     privkey = body.get('from_privkey', '')
     to_address = body.get('to_address', '')
     amount = body.get('amount')
-    fee = body.get('fee', 0.0001)
+    # fee = tx_size_bytes * FEE_PER_BYTE / WEBD_UNITS = 141 * 580 / 10000 = 8.178 WEBD
+    _DEFAULT_FEE = (141 * 580) / 10000
+    fee = body.get('fee', _DEFAULT_FEE)
     if not privkey or not to_address:
         return jsonify({'error': 'from_privkey and to_address are required'}), 400
     if not amount or not isinstance(amount, (int, float)) or amount <= 0:
         return jsonify({'error': 'amount must be a positive number'}), 400
-    if not isinstance(fee, (int, float)) or fee < 0:
-        return jsonify({'error': 'fee must be a non-negative number'}), 400
+    if not isinstance(fee, (int, float)) or fee <= 0:
+        return jsonify({'error': 'fee must be a positive number'}), 400
     try:
         result = transfer.send_webd(privkey, to_address, float(amount), float(fee))
         return jsonify(result)

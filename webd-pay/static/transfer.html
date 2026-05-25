@@ -68,16 +68,9 @@
     <label>Adresă destinatar</label>
     <input type="text" id="toAddress" placeholder="WEBD$g..." spellcheck="false">
 
-    <div class="row">
-      <div>
-        <label>Sumă (WEBD)</label>
-        <input type="number" id="amount" placeholder="10.0" min="0.0001" step="0.0001">
-      </div>
-      <div>
-        <label>Comision (WEBD)</label>
-        <input type="number" id="fee" value="0.0001" min="0.0001" step="0.0001">
-      </div>
-    </div>
+    <label>Sumă (WEBD)</label>
+    <input type="number" id="amount" placeholder="10.0" min="0.0001" step="0.0001">
+    <div class="hint" id="feeInfo"></div>
 
     <button class="btn btn-primary" id="sendBtn" onclick="sendTransfer()">
       &#10148; Trimite WEBD
@@ -89,6 +82,14 @@
   </div>
 
   <script>
+    const FEE_PER_BYTE = 580;
+    const TX_SIZE_BYTES = 141;
+    const WEBD_UNITS = 10000;
+    const FEE_WEBD = (TX_SIZE_BYTES * FEE_PER_BYTE) / WEBD_UNITS; // 8.178
+
+    document.getElementById('feeInfo').textContent =
+      'Comision calculat automat: ' + FEE_WEBD.toFixed(4) + ' WEBD (' + TX_SIZE_BYTES + ' bytes × ' + FEE_PER_BYTE + ' / ' + WEBD_UNITS + ')';
+
     let _privkey = null;
 
     function onDrag(e, over) {
@@ -160,7 +161,7 @@
     async function sendTransfer() {
       const toAddress = document.getElementById('toAddress').value.trim();
       const amount = parseFloat(document.getElementById('amount').value);
-      const fee = parseFloat(document.getElementById('fee').value);
+      const fee = FEE_WEBD;
       const resultEl = document.getElementById('result');
       const btn = document.getElementById('sendBtn');
 
