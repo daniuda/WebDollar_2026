@@ -15,6 +15,15 @@
     label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; margin-top: 18px; }
     input { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 12px 14px; color: #e2e8f0; font-size: 14px; outline: none; }
     input:focus { border-color: #f59e0b; }
+    .file-drop { border: 2px dashed #2d3748; border-radius: 10px; padding: 24px 16px; text-align: center; cursor: pointer; transition: border-color .2s; }
+    .file-drop:hover, .file-drop.drag { border-color: #f59e0b; background: #1e2535; }
+    .file-drop input[type=file] { display: none; }
+    .file-drop .icon { font-size: 28px; margin-bottom: 8px; }
+    .file-drop .label { font-size: 14px; color: #94a3b8; }
+    .file-drop .sub { font-size: 12px; color: #475569; margin-top: 4px; }
+    .wallet-loaded { background: #0f2718; border: 1px solid #22c55e; border-radius: 10px; padding: 14px 16px; margin-top: 10px; display: none; }
+    .wallet-loaded .wl-name { font-size: 12px; color: #4ade80; margin-bottom: 4px; }
+    .wallet-loaded .wl-addr { font-size: 13px; color: #86efac; word-break: break-all; }
     .row { display: flex; gap: 12px; }
     .row > div { flex: 1; }
     .hint { font-size: 12px; color: #475569; margin-top: 6px; }
@@ -44,14 +53,17 @@
       Odată confirmată, tranzacția nu poate fi anulată.
     </div>
 
-    <label>Cheie privată (hex, 64 caractere)</label>
-    <input type="password" id="privkey" placeholder="a3f8..." autocomplete="off" spellcheck="false">
-    <div class="hint">Trimisă criptat (HTTPS) la server pentru derivarea adresei și semnarea tranzacției.</div>
-
-    <button class="btn btn-secondary" onclick="deriveAddress()" style="margin-top:10px;">
-      &#128269; Verifică adresa mea
-    </button>
-    <div class="my-address" id="myAddress"></div>
+    <label>Fișier wallet (.webd)</label>
+    <div class="file-drop" id="fileDrop" onclick="document.getElementById('walletFile').click()" ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)" ondrop="onDrop(event)">
+      <input type="file" id="walletFile" accept=".webd,application/json" onchange="loadWallet(this.files[0])">
+      <div class="icon">&#128193;</div>
+      <div class="label">Click sau trage fișierul <strong>.webd</strong> aici</div>
+      <div class="sub">Exportat din nodul WebDollar cu opțiunea 5 (Export address)</div>
+    </div>
+    <div class="wallet-loaded" id="walletLoaded">
+      <div class="wl-name" id="walletFileName"></div>
+      <div class="wl-addr" id="walletAddress"></div>
+    </div>
 
     <label>Adresă destinatar</label>
     <input type="text" id="toAddress" placeholder="WEBD$g..." spellcheck="false">
@@ -77,31 +89,75 @@
   </div>
 
   <script>
-    async function deriveAddress() {
-      const privkey = document.getElementById('privkey').value.trim();
-      if (!privkey) return;
-      const el = document.getElementById('myAddress');
-      el.style.display = 'block';
-      el.textContent = 'Se calculează...';
-      try {
-        const r = await fetch('/api/v1/transfer/derive-address', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({privkey})
-        });
-        const data = await r.json();
-        if (data.address) {
-          el.textContent = '🔒 Adresa ta: ' + data.address;
-        } else {
-          el.textContent = 'Eroare: ' + (data.error || 'cheie invalidă');
+    let _privkey = null;
+
+    function onDrag(e, over) {
+      e.preventDefault();
+      document.getElementById('fileDrop').classList.toggle('drag', over);
+    }
+
+    function onDrop(e) {
+      e.preventDefault();
+      onDrag(e, false);
+      const f = e.dataTransfer.files[0];
+      if (f) loadWallet(f);
+    }
+
+    function loadWallet(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        let wallet;
+        try {
+          wallet = JSON.parse(e.target.result);
+        } catch (_) {
+          showWalletError('Fișier invalid — nu este JSON valid.');
+          return;
         }
-      } catch (e) {
-        el.textContent = 'Eroare de rețea.';
-      }
+        if (!wallet.privateKey || typeof wallet.privateKey !== 'string') {
+          showWalletError('Fișier invalid — câmpul privateKey lipsește.');
+          return;
+        }
+        _privkey = wallet.privateKey.trim();
+
+        // auto-derive address to show confirmation
+        const addrEl = document.getElementById('walletAddress');
+        addrEl.textContent = 'Se verifică adresa...';
+        document.getElementById('walletFileName').textContent = '📄 ' + file.name;
+        document.getElementById('walletLoaded').style.display = 'block';
+
+        try {
+          const r = await fetch('/api/v1/transfer/derive-address', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({privkey: _privkey})
+          });
+          const data = await r.json();
+          if (data.address) {
+            addrEl.textContent = '🔒 Adresa ta: ' + data.address;
+          } else {
+            addrEl.textContent = 'Eroare: ' + (data.error || 'cheie invalidă');
+            _privkey = null;
+          }
+        } catch (_) {
+          addrEl.textContent = 'Eroare de rețea la verificarea adresei.';
+          _privkey = null;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function showWalletError(msg) {
+      _privkey = null;
+      const el = document.getElementById('walletLoaded');
+      el.style.display = 'block';
+      el.style.background = '#7f1d1d';
+      el.style.borderColor = '#ef4444';
+      document.getElementById('walletFileName').textContent = '';
+      document.getElementById('walletAddress').textContent = msg;
     }
 
     async function sendTransfer() {
-      const privkey = document.getElementById('privkey').value.trim();
       const toAddress = document.getElementById('toAddress').value.trim();
       const amount = parseFloat(document.getElementById('amount').value);
       const fee = parseFloat(document.getElementById('fee').value);
@@ -110,8 +166,12 @@
 
       resultEl.style.display = 'none';
 
-      if (!privkey || !toAddress || !amount) {
-        showResult('error', 'Completați toate câmpurile obligatorii.');
+      if (!_privkey) {
+        showResult('error', 'Încărcați mai întâi fișierul wallet (.webd).');
+        return;
+      }
+      if (!toAddress || !amount) {
+        showResult('error', 'Completați adresa destinatarului și suma.');
         return;
       }
       if (!toAddress.startsWith('WEBD$')) {
@@ -126,17 +186,19 @@
         const r = await fetch('/api/v1/transfer/send', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({from_privkey: privkey, to_address: toAddress, amount, fee})
+          body: JSON.stringify({from_privkey: _privkey, to_address: toAddress, amount, fee})
         });
         const data = await r.json();
         if (r.ok && data.txId) {
           const el = document.getElementById('result');
           el.className = 'result success';
-          el.innerHTML = '✓ Tranzacție trimisă cu succes!<br>TX ID: <strong id="txIdSpan"></strong>';
+          el.innerHTML = '&#10003; Tranzacție trimisă cu succes!<br>TX ID: <strong id="txIdSpan"></strong>';
           document.getElementById('txIdSpan').textContent = data.txId;
           el.style.display = 'block';
-          document.getElementById('privkey').value = '';
-          document.getElementById('myAddress').style.display = 'none';
+          // clear wallet after send
+          _privkey = null;
+          document.getElementById('walletFile').value = '';
+          document.getElementById('walletLoaded').style.display = 'none';
         } else {
           const errEl = document.getElementById('result');
           errEl.className = 'result error';
