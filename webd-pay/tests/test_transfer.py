@@ -98,14 +98,18 @@ def test_derive_address_route_valid(client):
     from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
     priv = Ed25519PrivateKey.generate()
     priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
-    resp = client.get(f'/api/v1/transfer/derive-address?privkey={priv_hex}')
+    resp = client.post('/api/v1/transfer/derive-address',
+        data=json.dumps({'privkey': priv_hex}),
+        content_type='application/json')
     assert resp.status_code == 200
     data = resp.get_json()
     assert data['address'].startswith('WEBD$')
 
 
 def test_derive_address_route_invalid(client):
-    resp = client.get('/api/v1/transfer/derive-address?privkey=bad')
+    resp = client.post('/api/v1/transfer/derive-address',
+        data=json.dumps({'privkey': 'bad'}),
+        content_type='application/json')
     assert resp.status_code == 400
     assert 'error' in resp.get_json()
 

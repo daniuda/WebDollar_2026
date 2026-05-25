@@ -117,12 +117,13 @@ def api_docs():
     return send_from_directory('static', 'docs.html')
 
 
-@app.get('/api/v1/transfer/derive-address')
+@app.post('/api/v1/transfer/derive-address')
 def transfer_derive_address():
     ip = request.remote_addr
     if not _check_transfer_rate_limit(ip):
         return jsonify({'error': 'rate limit exceeded'}), 429
-    privkey = request.args.get('privkey', '')
+    body = request.get_json(silent=True) or {}
+    privkey = body.get('privkey', '')
     try:
         address, _ = transfer.derive_address_from_privkey(privkey)
         return jsonify({'address': address})

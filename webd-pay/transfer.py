@@ -83,8 +83,11 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
         f"/{amount_webd}"
         f"/{fee_webd}"
     )
-    r_tx = requests.get(tx_url, timeout=15)
-    r_tx.raise_for_status()
+    try:
+        r_tx = requests.get(tx_url, timeout=15)
+        r_tx.raise_for_status()
+    except Exception:
+        raise RuntimeError("create-transaction request failed") from None
     tx = r_tx.json()
 
     if not tx.get('result'):
