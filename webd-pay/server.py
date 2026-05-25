@@ -5,7 +5,7 @@ from collections import defaultdict
 from flask import Flask, request, jsonify, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 
-import config, db, node_client, webhook
+import config, db, node_client, webhook, transfer
 
 app = Flask(__name__, static_folder='static')
 
@@ -24,6 +24,23 @@ def _check_rate_limit(ip: str) -> bool:
             return False
         timestamps.append(now)
         _rate_buckets[ip] = timestamps
+    return True
+
+
+_transfer_buckets: dict[str, list] = defaultdict(list)
+_transfer_lock = threading.Lock()
+_TRANSFER_LIMIT_PER_MIN = 5
+
+
+def _check_transfer_rate_limit(ip: str) -> bool:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=1)
+    with _transfer_lock:
+        timestamps = [t for t in _transfer_buckets[ip] if t > cutoff]
+        if len(timestamps) >= _TRANSFER_LIMIT_PER_MIN:
+            return False
+        timestamps.append(now)
+        _transfer_buckets[ip] = timestamps
     return True
 
 
@@ -98,6 +115,49 @@ def index():
 @app.get('/api/v1/docs')
 def api_docs():
     return send_from_directory('static', 'docs.html')
+
+
+@app.get('/api/v1/transfer/derive-address')
+def transfer_derive_address():
+    ip = request.remote_addr
+    if not _check_transfer_rate_limit(ip):
+        return jsonify({'error': 'rate limit exceeded'}), 429
+    privkey = request.args.get('privkey', '')
+    try:
+        address, _ = transfer.derive_address_from_privkey(privkey)
+        return jsonify({'address': address})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.post('/api/v1/transfer/send')
+def transfer_send():
+    ip = request.remote_addr
+    if not _check_transfer_rate_limit(ip):
+        return jsonify({'error': 'rate limit exceeded, max 5 transfers per minute'}), 429
+    body = request.get_json(silent=True) or {}
+    privkey = body.get('from_privkey', '')
+    to_address = body.get('to_address', '')
+    amount = body.get('amount')
+    fee = body.get('fee', 0.0001)
+    if not privkey or not to_address:
+        return jsonify({'error': 'from_privkey and to_address are required'}), 400
+    if not amount or not isinstance(amount, (int, float)) or amount <= 0:
+        return jsonify({'error': 'amount must be a positive number'}), 400
+    if not isinstance(fee, (int, float)) or fee < 0:
+        return jsonify({'error': 'fee must be a non-negative number'}), 400
+    try:
+        result = transfer.send_webd(privkey, to_address, float(amount), float(fee))
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 502
+
+
+@app.get('/transfer')
+def transfer_page():
+    return send_from_directory('static', 'transfer.html')
 
 
 # ── Background worker ─────────────────────────────────────────────────────────

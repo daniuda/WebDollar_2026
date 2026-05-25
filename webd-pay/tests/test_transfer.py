@@ -79,3 +79,58 @@ def test_send_webd_node_error(priv_hex):
     with patch('requests.get', side_effect=[mock_import, mock_tx]):
         with pytest.raises(RuntimeError, match='insufficient funds'):
             transfer.send_webd(priv_hex, 'WEBD$gDest123', 5.0, 0.0001)
+
+
+# ── Flask route tests ─────────────────────────────────────────────────────────
+
+import json
+
+@pytest.fixture
+def client():
+    import server
+    server.app.config['TESTING'] = True
+    with server.app.test_client() as c:
+        yield c
+
+
+def test_derive_address_route_valid(client):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
+    priv = Ed25519PrivateKey.generate()
+    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
+    resp = client.get(f'/api/v1/transfer/derive-address?privkey={priv_hex}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['address'].startswith('WEBD$')
+
+
+def test_derive_address_route_invalid(client):
+    resp = client.get('/api/v1/transfer/derive-address?privkey=bad')
+    assert resp.status_code == 400
+    assert 'error' in resp.get_json()
+
+
+def test_transfer_send_route_success(client):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
+    priv = Ed25519PrivateKey.generate()
+    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
+    mock_import = MagicMock()
+    mock_import.status_code = 200
+    mock_import.json.return_value = {'result': True}
+    mock_tx = MagicMock()
+    mock_tx.status_code = 200
+    mock_tx.json.return_value = {'result': True, 'txId': 'abc123'}
+    with patch('requests.get', side_effect=[mock_import, mock_tx]):
+        resp = client.post('/api/v1/transfer/send',
+            data=json.dumps({'from_privkey': priv_hex, 'to_address': 'WEBD$gDest123', 'amount': 5.0, 'fee': 0.0001}),
+            content_type='application/json')
+    assert resp.status_code == 200
+    assert resp.get_json()['txId'] == 'abc123'
+
+
+def test_transfer_send_missing_fields(client):
+    resp = client.post('/api/v1/transfer/send',
+        data=json.dumps({'amount': 5.0}),
+        content_type='application/json')
+    assert resp.status_code == 400
