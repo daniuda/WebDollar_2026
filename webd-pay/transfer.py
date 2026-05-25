@@ -1,7 +1,10 @@
 import hashlib
 import base64
+import math
 import requests
 from urllib.parse import quote
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 import config
 
@@ -33,9 +36,6 @@ def derive_address_from_privkey(privkey_hex: str) -> tuple[str, str]:
     if len(priv_bytes) != 32:
         raise ValueError("invalid private key: must be 32 bytes (64 hex chars)")
 
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
     priv = Ed25519PrivateKey.from_private_bytes(priv_bytes)
     pub_raw = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 
@@ -51,6 +51,10 @@ def derive_address_from_privkey(privkey_hex: str) -> tuple[str, str]:
 def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: float) -> dict:
     """Imports wallet into local node and creates a transaction. Returns {'result': True, 'txId': '...'}."""
     from_address, pubkey_hex = derive_address_from_privkey(privkey_hex)
+    if not (math.isfinite(amount_webd) and amount_webd > 0):
+        raise ValueError("amount_webd must be a finite positive number")
+    if not (math.isfinite(fee_webd) and fee_webd >= 0):
+        raise ValueError("fee_webd must be a finite non-negative number")
 
     base = config.NODE_URL
     secret = config.NODE_SECRET
@@ -61,9 +65,14 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
         f"/{quote(pubkey_hex, safe='')}"
         f"/{quote(privkey_hex, safe='')}"
     )
-    r_import = requests.get(import_url, timeout=10)
-    r_import.raise_for_status()
+    # SECURITY: import_url contains the private key — never log this URL
+    try:
+        r_import = requests.get(import_url, timeout=10)
+        r_import.raise_for_status()
+    except Exception:
+        raise RuntimeError("wallet import request failed") from None
     imp = r_import.json()
+    # Node returns {'result': False, 'message': 'wallet already exists'} for duplicates
     if not imp.get('result') and 'already' not in str(imp.get('message', '')).lower():
         raise RuntimeError(imp.get('message', 'wallet import failed'))
 

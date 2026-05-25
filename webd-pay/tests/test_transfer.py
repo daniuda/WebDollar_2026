@@ -5,21 +5,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import transfer
 
+
+@pytest.fixture
+def priv_hex():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
+    priv = Ed25519PrivateKey.generate()
+    return priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
+
+
 # ── derive_address_from_privkey ───────────────────────────────────────────────
 
 def test_derive_address_known_vector():
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
-    priv = Ed25519PrivateKey.generate()
-    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
-    pub_raw = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-
-    address, pubkey_hex = transfer.derive_address_from_privkey(priv_hex)
-
-    assert address.startswith('WEBD$')
-    assert len(address) > 20
-    assert pubkey_hex == pub_raw.hex()
-    assert len(pubkey_hex) == 64  # 32 bytes hex
+    KNOWN_PRIVKEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+    EXPECTED_ADDRESS = 'WEBD$gCSiDjWPw+C6PD7NNWoskcX1G@K#QBJQ$7$'
+    EXPECTED_PUBKEY = '8233bb03b39099365a86bfead59869e1a17806ef7576da81da9b9bd66f3bf787'
+    address, pubkey_hex = transfer.derive_address_from_privkey(KNOWN_PRIVKEY)
+    assert address == EXPECTED_ADDRESS
+    assert pubkey_hex == EXPECTED_PUBKEY
 
 
 def test_derive_address_invalid_hex():
@@ -34,12 +37,7 @@ def test_derive_address_wrong_length():
 
 # ── send_webd ────────────────────────────────────────────────────────────────
 
-def test_send_webd_success():
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
-    priv = Ed25519PrivateKey.generate()
-    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
-
+def test_send_webd_success(priv_hex):
     mock_import = MagicMock()
     mock_import.status_code = 200
     mock_import.json.return_value = {'result': True, 'address': 'WEBD$abc'}
@@ -55,12 +53,7 @@ def test_send_webd_success():
     assert result['txId'] == 'deadbeef01234567'
 
 
-def test_send_webd_import_fails():
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
-    priv = Ed25519PrivateKey.generate()
-    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
-
+def test_send_webd_wallet_already_imported(priv_hex):
     mock_import = MagicMock()
     mock_import.status_code = 200
     mock_import.json.return_value = {'result': False, 'message': 'already exists'}
@@ -74,12 +67,7 @@ def test_send_webd_import_fails():
     assert result['result'] is True
 
 
-def test_send_webd_node_error():
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
-    priv = Ed25519PrivateKey.generate()
-    priv_hex = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
-
+def test_send_webd_node_error(priv_hex):
     mock_import = MagicMock()
     mock_import.status_code = 200
     mock_import.json.return_value = {'result': True}
