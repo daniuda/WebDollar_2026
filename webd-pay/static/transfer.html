@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transfer WEBD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 16px; padding: 40px; max-width: 520px; width: 100%; }
+    .logo { font-size: 36px; text-align: center; margin-bottom: 12px; }
+    h1 { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 24px; }
+    .disclaimer { background: #7f1d1d; border: 1px solid #ef4444; border-radius: 10px; padding: 16px; margin-bottom: 28px; font-size: 14px; line-height: 1.6; color: #fca5a5; }
+    .disclaimer strong { color: #ff6b6b; display: block; margin-bottom: 6px; font-size: 15px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; margin-top: 18px; }
+    input { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 12px 14px; color: #e2e8f0; font-size: 14px; outline: none; }
+    input:focus { border-color: #f59e0b; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .hint { font-size: 12px; color: #475569; margin-top: 6px; }
+    .my-address { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #7dd3fc; margin-top: 8px; word-break: break-all; display: none; }
+    .btn { width: 100%; padding: 14px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; border: none; margin-top: 12px; }
+    .btn-secondary { background: #1e293b; color: #94a3b8; border: 1px solid #2d3748; }
+    .btn-secondary:hover { background: #273348; }
+    .btn-primary { background: #f59e0b; color: #0f1117; margin-top: 20px; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result { margin-top: 20px; padding: 16px; border-radius: 10px; font-size: 14px; display: none; word-break: break-all; }
+    .result.success { background: #14532d; border: 1px solid #22c55e; color: #86efac; }
+    .result.error { background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; }
+    a.back { display: block; text-align: center; margin-top: 24px; color: #475569; font-size: 13px; text-decoration: none; }
+    a.back:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">&#x1FA99;</div>
+    <h1>Transfer WEBD</h1>
+
+    <div class="disclaimer">
+      <strong>&#9888; Atenție — Tranzacțiile sunt ireversibile</strong>
+      Nu ne asumăm nicio responsabilitate pentru fondurile trimise la adrese greșite.
+      Verificați de două ori adresa destinatarului înainte de a trimite.
+      Odată confirmată, tranzacția nu poate fi anulată.
+    </div>
+
+    <label>Cheie privată (hex, 64 caractere)</label>
+    <input type="password" id="privkey" placeholder="a3f8..." autocomplete="off" spellcheck="false">
+    <div class="hint">Trimisă criptat (HTTPS) la server pentru derivarea adresei și semnarea tranzacției.</div>
+
+    <button class="btn btn-secondary" onclick="deriveAddress()" style="margin-top:10px;">
+      &#128269; Verifică adresa mea
+    </button>
+    <div class="my-address" id="myAddress"></div>
+
+    <label>Adresă destinatar</label>
+    <input type="text" id="toAddress" placeholder="WEBD$g..." spellcheck="false">
+
+    <div class="row">
+      <div>
+        <label>Sumă (WEBD)</label>
+        <input type="number" id="amount" placeholder="10.0" min="0.0001" step="0.0001">
+      </div>
+      <div>
+        <label>Comision (WEBD)</label>
+        <input type="number" id="fee" value="0.0001" min="0.0001" step="0.0001">
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="sendBtn" onclick="sendTransfer()">
+      &#10148; Trimite WEBD
+    </button>
+
+    <div class="result" id="result"></div>
+
+    <a class="back" href="/">&#8592; Înapoi</a>
+  </div>
+
+  <script>
+    async function deriveAddress() {
+      const privkey = document.getElementById('privkey').value.trim();
+      if (!privkey) return;
+      const el = document.getElementById('myAddress');
+      el.style.display = 'block';
+      el.textContent = 'Se calculează...';
+      try {
+        const r = await fetch('/api/v1/transfer/derive-address', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({privkey})
+        });
+        const data = await r.json();
+        if (data.address) {
+          el.textContent = '🔒 Adresa ta: ' + data.address;
+        } else {
+          el.textContent = 'Eroare: ' + (data.error || 'cheie invalidă');
+        }
+      } catch (e) {
+        el.textContent = 'Eroare de rețea.';
+      }
+    }
+
+    async function sendTransfer() {
+      const privkey = document.getElementById('privkey').value.trim();
+      const toAddress = document.getElementById('toAddress').value.trim();
+      const amount = parseFloat(document.getElementById('amount').value);
+      const fee = parseFloat(document.getElementById('fee').value);
+      const resultEl = document.getElementById('result');
+      const btn = document.getElementById('sendBtn');
+
+      resultEl.style.display = 'none';
+
+      if (!privkey || !toAddress || !amount) {
+        showResult('error', 'Completați toate câmpurile obligatorii.');
+        return;
+      }
+      if (!toAddress.startsWith('WEBD$')) {
+        showResult('error', 'Adresa destinatarului trebuie să înceapă cu WEBD$');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Se trimite...';
+
+      try {
+        const r = await fetch('/api/v1/transfer/send', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({from_privkey: privkey, to_address: toAddress, amount, fee})
+        });
+        const data = await r.json();
+        if (r.ok && data.txId) {
+          showResult('success', '✓ Tranzacție trimisă cu succes!<br>TX ID: <strong>' + data.txId + '</strong>');
+          document.getElementById('privkey').value = '';
+          document.getElementById('myAddress').style.display = 'none';
+        } else {
+          showResult('error', 'Eroare: ' + (data.error || 'necunoscută'));
+        }
+      } catch (e) {
+        showResult('error', 'Eroare de rețea: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '► Trimite WEBD';
+      }
+    }
+
+    function showResult(type, html) {
+      const el = document.getElementById('result');
+      el.className = 'result ' + type;
+      el.innerHTML = html;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
