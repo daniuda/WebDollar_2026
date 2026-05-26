@@ -104,6 +104,15 @@
       if (f) loadWallet(f);
     }
 
+    function extractSeed(privHex) {
+      const h = privHex.trim().toLowerCase();
+      // .webd stores WIF: version(1B) + seed(32B) + pubkey(32B) + checksum(4B) = 69B = 138 hex chars
+      if (h.length === 138) return h.slice(2, 66);
+      // fallback: plain 32-byte seed already
+      if (h.length === 64) return h;
+      return null;
+    }
+
     function loadWallet(file) {
       if (!file) return;
       const reader = new FileReader();
@@ -119,7 +128,12 @@
           showWalletError('Fișier invalid — câmpul privateKey lipsește.');
           return;
         }
-        _privkey = wallet.privateKey.trim();
+        const seed = extractSeed(wallet.privateKey);
+        if (!seed) {
+          showWalletError('Format cheie necunoscut (lungime: ' + wallet.privateKey.length + ').');
+          return;
+        }
+        _privkey = seed;
 
         // auto-derive address to show confirmation
         const addrEl = document.getElementById('walletAddress');
