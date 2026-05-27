@@ -70,6 +70,17 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
     base = config.NODE_URL
     secret = config.NODE_SECRET
 
+    # Check balance before importing — "Nonce is not right" from node means address not in chain
+    try:
+        r_bal = requests.get(f"{base}/address/balance/{quote(from_address, safe='')}", timeout=10)
+        bal = r_bal.json().get('balance', 0) if r_bal.ok else 0
+    except Exception:
+        bal = None
+    if bal is not None:
+        needed = amount_webd + fee_webd
+        if bal < needed:
+            raise ValueError(f"sold insuficient: {bal:.4f} WEBD disponibil, necesar {needed:.4f} WEBD (suma + comision)")
+
     import_url = (
         f"{base}/{secret}/wallets/import"
         f"/{quote(from_address, safe='')}"
