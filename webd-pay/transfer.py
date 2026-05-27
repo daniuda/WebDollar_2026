@@ -12,6 +12,7 @@ _PREFIX_BYTES  = bytes.fromhex("584043fe")
 _VERSION_BYTES = bytes.fromhex("00")
 _SUFFIX_BYTES  = bytes.fromhex("FF")
 _CHECKSUM_LEN  = 4
+_PRIVKEY_WIF_VERSION = bytes.fromhex("80")
 
 
 def _sha256(data: bytes) -> bytes:
@@ -25,6 +26,13 @@ def _ripemd160(data: bytes) -> bytes:
 def _encode_base64_webd(data: bytes) -> str:
     raw = base64.b64encode(data).decode("ascii")
     return raw.replace("O", "#").replace("l", "@").replace("/", "$")
+
+
+def _seed_to_wif_hex(seed_bytes: bytes, pubkey_bytes: bytes) -> str:
+    """Return 69-byte WIF hex: 0x80 + seed(32B) + pubkey(32B) + checksum(4B)."""
+    body = _PRIVKEY_WIF_VERSION + seed_bytes + pubkey_bytes
+    checksum = _sha256(_sha256(body))[:_CHECKSUM_LEN]
+    return (body + checksum).hex()
 
 
 def derive_address_from_privkey(privkey_hex: str) -> tuple[str, str]:
@@ -56,6 +64,9 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
     if not (math.isfinite(fee_webd) and fee_webd >= 0):
         raise ValueError("fee_webd must be a finite non-negative number")
 
+    # Node expects WIF format (0x80 + seed + pubkey + checksum = 69B) so validatePrivateKeyWIF passes
+    wif_hex = _seed_to_wif_hex(bytes.fromhex(privkey_hex), bytes.fromhex(pubkey_hex))
+
     base = config.NODE_URL
     secret = config.NODE_SECRET
 
@@ -63,7 +74,7 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
         f"{base}/{secret}/wallets/import"
         f"/{quote(from_address, safe='')}"
         f"/{quote(pubkey_hex, safe='')}"
-        f"/{quote(privkey_hex, safe='')}"
+        f"/{quote(wif_hex, safe='')}"
     )
     # SECURITY: import_url contains the private key — never log this URL
     try:
@@ -91,6 +102,10 @@ def send_webd(privkey_hex: str, to_address: str, amount_webd: float, fee_webd: f
     tx = r_tx.json()
 
     if not tx.get('result'):
-        raise RuntimeError(tx.get('message', 'transaction failed'))
+        msg = tx.get('message', 'transaction failed')
+        reason = tx.get('reason')
+        if reason and reason != msg:
+            msg = f"{msg}: {reason}"
+        raise RuntimeError(msg)
 
     return {'result': True, 'txId': tx.get('txId', '')}
