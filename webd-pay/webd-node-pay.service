@@ -5,10 +5,12 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/home/ubuntu/webd-node
-ExecStart=/home/ubuntu/.nvm/versions/node/v16.20.2/bin/node index.js
+ExecStart=/bin/bash /home/ubuntu/webd-node/start_node_pay.sh
 Environment=SERVER_PORT=8080
 Environment=MAX_BROWSER=0
 Environment=MAX_TERMINAL=0
+Environment=SECRET=SECRET_SECRET_SECRET_LONG_SECRET_123456
+Environment=WALLET_SECRET_URL=SECRET_SECRET_SECRET_LONG_SECRET_123456
 Restart=always
 RestartSec=10
 StandardOutput=journal
