@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebDollar Payment Server</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 16px; padding: 48px 40px; max-width: 520px; width: 100%; text-align: center; }
+    .logo { font-size: 48px; margin-bottom: 16px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    p { color: #94a3b8; margin-bottom: 32px; line-height: 1.6; }
+    .btn { display: inline-block; background: #f59e0b; color: #0f1117; font-weight: 700; padding: 14px 32px; border-radius: 10px; text-decoration: none; margin: 8px; }
+    pre { background: #0f1117; border-radius: 8px; padding: 16px; text-align: left; font-size: 13px; color: #7dd3fc; overflow-x: auto; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">&#x1FA99;</div>
+    <h1>WebDollar Payments</h1>
+    <p>Accept WEBD payments with a simple API.<br>No registration required.</p>
+    <a class="btn" href="/transfer">Transfer WEBD</a>
+    <a class="btn" href="/api/v1/docs" style="background:#334155;color:#e2e8f0;">API Docs</a>
+    <pre>POST /api/v1/payment/create
+{ "amount": 100.5,
+  "webhook_url": "https://..." }
+
+&rarr; { "payment_url": "https://pay.webdollar.cloudns.nz/p/..." }</pre>
+  </div>
+</body>
+</html>

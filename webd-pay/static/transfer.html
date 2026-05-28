@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transfer WEBD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 16px; padding: 40px; max-width: 520px; width: 100%; }
+    .logo { font-size: 36px; text-align: center; margin-bottom: 12px; }
+    h1 { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 24px; }
+    .disclaimer { background: #7f1d1d; border: 1px solid #ef4444; border-radius: 10px; padding: 16px; margin-bottom: 28px; font-size: 14px; line-height: 1.6; color: #fca5a5; }
+    .disclaimer strong { color: #ff6b6b; display: block; margin-bottom: 6px; font-size: 15px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; margin-top: 18px; }
+    input { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 12px 14px; color: #e2e8f0; font-size: 14px; outline: none; }
+    input:focus { border-color: #f59e0b; }
+    .file-drop { border: 2px dashed #2d3748; border-radius: 10px; padding: 24px 16px; text-align: center; cursor: pointer; transition: border-color .2s; }
+    .file-drop:hover, .file-drop.drag { border-color: #f59e0b; background: #1e2535; }
+    .file-drop input[type=file] { display: none; }
+    .file-drop .icon { font-size: 28px; margin-bottom: 8px; }
+    .file-drop .label { font-size: 14px; color: #94a3b8; }
+    .file-drop .sub { font-size: 12px; color: #475569; margin-top: 4px; }
+    .wallet-loaded { background: #0f2718; border: 1px solid #22c55e; border-radius: 10px; padding: 14px 16px; margin-top: 10px; display: none; }
+    .wallet-loaded .wl-name { font-size: 12px; color: #4ade80; margin-bottom: 4px; }
+    .wallet-loaded .wl-addr { font-size: 13px; color: #86efac; word-break: break-all; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .hint { font-size: 12px; color: #475569; margin-top: 6px; }
+    .my-address { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #7dd3fc; margin-top: 8px; word-break: break-all; display: none; }
+    .btn { width: 100%; padding: 14px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; border: none; margin-top: 12px; }
+    .btn-secondary { background: #1e293b; color: #94a3b8; border: 1px solid #2d3748; }
+    .btn-secondary:hover { background: #273348; }
+    .btn-primary { background: #f59e0b; color: #0f1117; margin-top: 20px; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result { margin-top: 20px; padding: 16px; border-radius: 10px; font-size: 14px; display: none; word-break: break-all; }
+    .result.success { background: #14532d; border: 1px solid #22c55e; color: #86efac; }
+    .result.error { background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; }
+    a.back { display: block; text-align: center; margin-top: 24px; color: #475569; font-size: 13px; text-decoration: none; }
+    a.back:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">&#x1FA99;</div>
+    <h1>Transfer WEBD</h1>
+
+    <div class="disclaimer">
+      <strong>&#9888; Atenție — Tranzacțiile sunt ireversibile</strong>
+      Nu ne asumăm nicio responsabilitate pentru fondurile trimise la adrese greșite.
+      Verificați de două ori adresa destinatarului înainte de a trimite.
+      Odată confirmată, tranzacția nu poate fi anulată.
+    </div>
+
+    <label>Fișier wallet (.webd)</label>
+    <div class="file-drop" id="fileDrop" onclick="document.getElementById('walletFile').click()" ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)" ondrop="onDrop(event)">
+      <input type="file" id="walletFile" accept=".webd,application/json" onchange="loadWallet(this.files[0])">
+      <div class="icon">&#128193;</div>
+      <div class="label">Click sau trage fișierul <strong>.webd</strong> aici</div>
+      <div class="sub">Exportat din nodul WebDollar cu opțiunea 5 (Export address)</div>
+    </div>
+    <div class="wallet-loaded" id="walletLoaded">
+      <div class="wl-name" id="walletFileName"></div>
+      <div class="wl-addr" id="walletAddress"></div>
+    </div>
+
+    <label>Adresă destinatar</label>
+    <input type="text" id="toAddress" placeholder="WEBD$g..." spellcheck="false">
+
+    <label>Sumă (WEBD)</label>
+    <input type="number" id="amount" placeholder="10.0" min="0.0001" step="0.0001">
+    <div class="hint" id="feeInfo"></div>
+
+    <button class="btn btn-primary" id="sendBtn" onclick="sendTransfer()">
+      &#10148; Trimite WEBD
+    </button>
+
+    <div class="result" id="result"></div>
+
+    <a class="back" href="/">&#8592; Înapoi</a>
+  </div>
+
+  <script>
+    const FEE_PER_BYTE = 580;
+    const TX_SIZE_BYTES = 141;
+    const WEBD_UNITS = 10000;
+    const FEE_WEBD = (TX_SIZE_BYTES * FEE_PER_BYTE) / WEBD_UNITS; // 8.178
+
+    document.getElementById('feeInfo').textContent =
+      'Comision calculat automat: ' + FEE_WEBD.toFixed(4) + ' WEBD (' + TX_SIZE_BYTES + ' bytes × ' + FEE_PER_BYTE + ' / ' + WEBD_UNITS + ')';
+
+    let _privkey = null;
+
+    function onDrag(e, over) {
+      e.preventDefault();
+      document.getElementById('fileDrop').classList.toggle('drag', over);
+    }
+
+    function onDrop(e) {
+      e.preventDefault();
+      onDrag(e, false);
+      const f = e.dataTransfer.files[0];
+      if (f) loadWallet(f);
+    }
+
+    function extractSeed(privHex) {
+      const h = privHex.trim().toLowerCase();
+      // .webd stores WIF: version(1B) + seed(32B) + pubkey(32B) + checksum(4B) = 69B = 138 hex chars
+      if (h.length === 138) return h.slice(2, 66);
+      // fallback: plain 32-byte seed already
+      if (h.length === 64) return h;
+      return null;
+    }
+
+    function loadWallet(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        let wallet;
+        try {
+          wallet = JSON.parse(e.target.result);
+        } catch (_) {
+          showWalletError('Fișier invalid — nu este JSON valid.');
+          return;
+        }
+        if (!wallet.privateKey || typeof wallet.privateKey !== 'string') {
+          showWalletError('Fișier invalid — câmpul privateKey lipsește.');
+          return;
+        }
+        const seed = extractSeed(wallet.privateKey);
+        if (!seed) {
+          showWalletError('Format cheie necunoscut (lungime: ' + wallet.privateKey.length + ').');
+          return;
+        }
+        _privkey = seed;
+
+        // auto-derive address to show confirmation
+        const addrEl = document.getElementById('walletAddress');
+        addrEl.textContent = 'Se verifică adresa...';
+        document.getElementById('walletFileName').textContent = '📄 ' + file.name;
+        document.getElementById('walletLoaded').style.display = 'block';
+
+        try {
+          const r = await fetch('/api/v1/transfer/derive-address', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({privkey: _privkey})
+          });
+          const data = await r.json();
+          if (data.address) {
+            addrEl.textContent = '🔒 Adresa ta: ' + data.address;
+          } else {
+            addrEl.textContent = 'Eroare: ' + (data.error || 'cheie invalidă');
+            _privkey = null;
+          }
+        } catch (_) {
+          addrEl.textContent = 'Eroare de rețea la verificarea adresei.';
+          _privkey = null;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function showWalletError(msg) {
+      _privkey = null;
+      const el = document.getElementById('walletLoaded');
+      el.style.display = 'block';
+      el.style.background = '#7f1d1d';
+      el.style.borderColor = '#ef4444';
+      document.getElementById('walletFileName').textContent = '';
+      document.getElementById('walletAddress').textContent = msg;
+    }
+
+    async function sendTransfer() {
+      const toAddress = document.getElementById('toAddress').value.trim();
+      const amount = parseFloat(document.getElementById('amount').value);
+      const fee = FEE_WEBD;
+      const resultEl = document.getElementById('result');
+      const btn = document.getElementById('sendBtn');
+
+      resultEl.style.display = 'none';
+
+      if (!_privkey) {
+        showResult('error', 'Încărcați mai întâi fișierul wallet (.webd).');
+        return;
+      }
+      if (!toAddress || !amount) {
+        showResult('error', 'Completați adresa destinatarului și suma.');
+        return;
+      }
+      if (!toAddress.startsWith('WEBD$')) {
+        showResult('error', 'Adresa destinatarului trebuie să înceapă cu WEBD$');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Se trimite...';
+
+      try {
+        const r = await fetch('/api/v1/transfer/send', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({from_privkey: _privkey, to_address: toAddress, amount, fee})
+        });
+        const data = await r.json();
+        if (r.ok && data.txId) {
+          const el = document.getElementById('result');
+          el.className = 'result success';
+          el.innerHTML = '&#10003; Tranzacție trimisă cu succes!<br>TX ID: <strong id="txIdSpan"></strong>';
+          document.getElementById('txIdSpan').textContent = data.txId;
+          el.style.display = 'block';
+          // clear wallet after send
+          _privkey = null;
+          document.getElementById('walletFile').value = '';
+          document.getElementById('walletLoaded').style.display = 'none';
+        } else {
+          const errEl = document.getElementById('result');
+          errEl.className = 'result error';
+          errEl.textContent = 'Eroare: ' + (data.error || 'necunoscută');
+          errEl.style.display = 'block';
+        }
+      } catch (e) {
+        const netEl = document.getElementById('result');
+        netEl.className = 'result error';
+        netEl.textContent = 'Eroare de rețea: ' + e.message;
+        netEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '► Trimite WEBD';
+      }
+    }
+
+    function showResult(type, html) {
+      const el = document.getElementById('result');
+      el.className = 'result ' + type;
+      el.innerHTML = html;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

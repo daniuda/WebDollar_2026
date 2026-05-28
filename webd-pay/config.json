@@ -1,0 +1,11 @@
+{
+  "node_url": "http://localhost:8080",
+  "node_secret": "SECRET_SECRET_SECRET_LONG_SECRET_123456",
+  "flask_port": 3010,
+  "session_ttl_minutes": 30,
+  "rate_limit_per_hour": 10,
+  "base_url": "https://pay.webdollar.cloudns.nz",
+  "wdexperience_url": "https://webdollar.cloudns.nz/wdexperience",
+  "admin_telegram_id": "",
+  "telegram_bot_token": ""
+}

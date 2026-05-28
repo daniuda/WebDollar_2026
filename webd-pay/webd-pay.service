@@ -1,0 +1,15 @@
+[Unit]
+Description=WebDollar Payment Server
+After=network.target webd-node-pay.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/webd-pay
+ExecStart=/home/ubuntu/webd-pay/venv/bin/python3 server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

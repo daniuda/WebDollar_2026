@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebDollar Payment</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 16px; padding: 32px 28px; max-width: 420px; width: 100%; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .logo { font-size: 36px; }
+    h1 { font-size: 20px; font-weight: 700; margin-top: 8px; }
+    .amount { font-size: 36px; font-weight: 800; color: #f59e0b; text-align: center; margin: 16px 0 4px; }
+    .label { font-size: 13px; color: #64748b; text-align: center; margin-bottom: 16px; }
+    .address { background: #0f1117; border-radius: 8px; padding: 12px; font-size: 12px; word-break: break-all; color: #7dd3fc; margin-bottom: 16px; }
+    .countdown { text-align: center; font-size: 14px; color: #94a3b8; margin-bottom: 20px; }
+    .qr { display: flex; justify-content: center; margin-bottom: 20px; }
+    .qr canvas, .qr img { border-radius: 8px; }
+    .btn { display: block; width: 100%; background: #f59e0b; color: #0f1117; font-weight: 700; font-size: 16px; padding: 14px; border-radius: 10px; border: none; cursor: pointer; text-align: center; text-decoration: none; margin-bottom: 12px; }
+    .status { text-align: center; padding: 16px; border-radius: 10px; font-weight: 600; margin-top: 8px; }
+    .status.pending { background: #1e293b; color: #94a3b8; }
+    .status.paid    { background: #064e3b; color: #6ee7b7; font-size: 20px; }
+    .status.expired { background: #450a0a; color: #fca5a5; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="logo">&#x1FA99;</div>
+    <h1>WebDollar Payment</h1>
+  </div>
+  <div class="amount" id="amount">...</div>
+  <div class="label">WEBD</div>
+  <div class="address" id="address">Loading...</div>
+  <div class="countdown" id="countdown"></div>
+  <div class="qr" id="qr"></div>
+  <a class="btn hidden" id="btnBrowser" href="#" target="_blank">Pay from browser</a>
+  <div class="status pending" id="status">&#x23F3; Waiting for payment...</div>
+</div>
+
+<script>
+const paymentId = location.pathname.split('/').pop();
+const WDEXP_URL = 'WDEXP_URL_PLACEHOLDER';
+let expiresAt = null;
+let pollTimer = null;
+let countdownTimer = null;
+let paid = false;
+
+async function load() {
+  const r = await fetch(`/api/v1/payment/${paymentId}/status`);
+  if (!r.ok) { document.getElementById('status').textContent = '❌ Payment not found.'; return; }
+  const d = await r.json();
+
+  document.getElementById('amount').textContent = d.amount_webd;
+  document.getElementById('address').textContent = d.pay_to || '';
+  expiresAt = new Date(d.expires_at);
+
+  if (d.pay_to) {
+    new QRCode(document.getElementById('qr'), { text: d.pay_to, width: 180, height: 180 });
+  }
+
+  const btn = document.getElementById('btnBrowser');
+  btn.href = `${WDEXP_URL}?pay-to=${encodeURIComponent(d.pay_to)}&pay-amount=${d.amount_webd}`;
+  btn.classList.remove('hidden');
+
+  updateStatus(d);
+  startCountdown();
+  pollTimer = setInterval(poll, 10000);
+}
+
+async function poll() {
+  if (paid) return;
+  const r = await fetch(`/api/v1/payment/${paymentId}/status`);
+  if (!r.ok) return;
+  updateStatus(await r.json());
+}
+
+function updateStatus(d) {
+  const el = document.getElementById('status');
+  if (d.status === 'paid' || d.status === 'overpaid') {
+    paid = true;
+    clearInterval(pollTimer);
+    clearInterval(countdownTimer);
+    el.className = 'status paid';
+    el.textContent = '✅ Payment confirmed!';
+    if (d.redirect_url) setTimeout(() => location.href = d.redirect_url, 3000);
+  } else if (d.status === 'expired') {
+    clearInterval(pollTimer);
+    clearInterval(countdownTimer);
+    el.className = 'status expired';
+    el.textContent = '❌ This payment session has expired.';
+  }
+}
+
+function startCountdown() {
+  function tick() {
+    const diff = Math.max(0, expiresAt - new Date());
+    const m = String(Math.floor(diff / 60000)).padStart(2, '0');
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+    document.getElementById('countdown').textContent = diff > 0 ? `Expires in ${m}:${s}` : 'Expired';
+    if (diff === 0) clearInterval(countdownTimer);
+  }
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+load();
+</script>
+</body>
+</html>
