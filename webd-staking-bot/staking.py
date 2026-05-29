@@ -1,7 +1,7 @@
 """
 Scanner depuneri on-chain + distribuitor rewards + executor retrageri automate.
 """
-import asyncio, logging, json, ssl, threading, urllib.request, urllib.parse
+import asyncio, base64, logging, json, ssl, threading, urllib.request, urllib.parse
 
 from config import (
     TIP_BOT_SEED, TIP_BOT_PUBKEY, TIP_BOT_ADDRESS,
@@ -10,6 +10,27 @@ from config import (
 import db
 
 log = logging.getLogger('webd-staking')
+
+_WIF_PREFIX = bytes([0x58, 0x40, 0x43, 0xfe])
+
+def _webd_to_hex(addr: str) -> str:
+    """Convert WEBD$ address to lowercase 20-byte hex hash for block comparisons."""
+    try:
+        normalized = addr.strip().replace('$', '/').replace('#', 'O').replace('@', 'l')
+        pad = len(normalized) % 4
+        if pad:
+            normalized += '=' * (4 - pad)
+        raw = base64.b64decode(normalized)
+        if len(raw) == 30 and raw[:4] == _WIF_PREFIX:
+            return raw[5:25].hex()
+    except Exception:
+        pass
+    return ''
+
+# Pre-computed hex hash of TIP_BOT_ADDRESS for block minerAddress comparison
+TIP_BOT_HEX = _webd_to_hex(TIP_BOT_ADDRESS) if TIP_BOT_ADDRESS else ''
+if TIP_BOT_ADDRESS and not TIP_BOT_HEX:
+    log.warning(f'TIP_BOT_ADDRESS invalid sau nedecodabil: {TIP_BOT_ADDRESS}')
 
 SCAN_INTERVAL = 30      # secunde intre scanuri
 TX_FEE_WEBD   = 10.0   # fee retragere (costa din balanta userului)
@@ -326,8 +347,9 @@ async def _do_scan(bot):
             continue
 
         # ── Reward propriu (tip bot a minat blocul) ────────────────────
-        miner = (block.get('minerAddress') or '').strip()
-        if miner and _addr_eq(miner, TIP_BOT_ADDRESS) and not db.reward_event_exists(h):
+        # minerAddress din API e hex (20 bytes), TIP_BOT_HEX e pre-decodat din WEBD$
+        miner = (block.get('minerAddress') or '').strip().lower()
+        if miner and TIP_BOT_HEX and miner == TIP_BOT_HEX and not db.reward_event_exists(h):
             raw = block.get('reward', 0)
             try:
                 reward = float(raw)
