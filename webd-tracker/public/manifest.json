@@ -1,0 +1,17 @@
+{
+  "name": "WEBD Tracker",
+  "short_name": "WEBD",
+  "description": "Monitor adrese WebDollar",
+  "start_url": "/tracker/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#16213e",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
