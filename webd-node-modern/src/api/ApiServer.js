@@ -23,12 +23,25 @@ export class ApiServer {
     const app = express();
     app.use(express.json());
 
+
     // ── chain endpoints ──────────────────────────────────────────────────────
     app.get('/block/:height', (req, res) => {
       const block = this.chain.getBlock(Number(req.params.height));
       if (block) res.json(block);
       else res.status(404).json({ error: 'Block not found' });
     });
+
+    // Nou: block by hash
+    app.get('/block-by-hash/:hash', async (req, res) => {
+      try {
+        const block = await this.chain.getBlockByHash(req.params.hash);
+        if (block) res.json(block);
+        else res.status(404).json({ error: 'Block not found' });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
     app.get('/latest', (req, res) => {
       res.json(this.chain.getLatestBlock());
     });

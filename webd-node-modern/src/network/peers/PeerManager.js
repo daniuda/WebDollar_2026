@@ -24,7 +24,13 @@ export class PeerManager {
   }
 
   addPeer(address, ws) {
-    this.peers.set(address, { ws, lastSeen: Date.now(), blacklist: false, whitelist: false });
+    const existing = this.peers.get(address);
+    this.peers.set(address, {
+      ws: ws || (existing ? existing.ws : null),
+      lastSeen: Date.now(),
+      blacklist: existing ? existing.blacklist : false,
+      whitelist: existing ? existing.whitelist : false,
+    });
     Logger.info('Peer adăugat:', address);
   }
 
@@ -49,6 +55,7 @@ export class PeerManager {
 
   heartbeatAll() {
     for (const [address, peer] of this.peers.entries()) {
+      if (!peer.ws) continue;
       try {
         peer.ws.send(MessageBuilder.ping());
       } catch (e) {
