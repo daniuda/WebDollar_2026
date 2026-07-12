@@ -130,14 +130,17 @@ export class ApiServer {
                   return sum;
                 }, 0);
 
+                const reward = Number(block.reward || 0) / 100000000;
+                const totalWebd = txAmount + reward;
+
                 blocks.push({
                   hash: block.hash || `block-${block.height}`,
                   height: block.height || 0,
                   timestamp: (block.timeStamp || block.timestamp) * 1000,
                   minerAddress: block.data?.minerAddress || '',
                   transactions: block.data?.transactions || [],
-                  totalWebd: txAmount,
-                  rewardWebd: null
+                  totalWebd: totalWebd,
+                  rewardWebd: reward
                 });
               }
               res.json(blocks.reverse());
