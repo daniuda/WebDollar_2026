@@ -106,7 +106,7 @@ export class ApiServer {
       }
     });
 
-    app.get('/blocks', async (req, res) => {
+    const blocksHandler = async (req, res) => {
       try {
         const limit = Math.min(parseInt(req.query.limit) || 10, 100);
         const blocks = [];
@@ -121,8 +121,9 @@ export class ApiServer {
             const startHeight = Math.max(0, topHeight - limit + 1);
             const legacyBlocksResp = await axios.default.get(`http://127.0.0.1:8081/blocks/between/${startHeight}/${topHeight}`, { timeout: 10000 });
 
-            if (legacyBlocksResp.data?.blocks && Array.isArray(legacyBlocksResp.data.blocks)) {
-              for (const block of legacyBlocksResp.data.blocks) {
+            const blocksArray = legacyBlocksResp.data?.blocks || legacyBlocksResp.data;
+            if (blocksArray && Array.isArray(blocksArray)) {
+              for (const block of blocksArray) {
                 const txAmount = (block.data?.transactions || []).reduce((sum, tx) => {
                   if (tx?.to && Array.isArray(tx.to)) {
                     return sum + tx.to.reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -173,7 +174,10 @@ export class ApiServer {
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
-    });
+    };
+
+    app.get('/blocks', blocksHandler);
+    app.get('/blocks/', blocksHandler);
 
     app.get('/api/visit/stats', (req, res) => {
       try {
