@@ -1,5 +1,7 @@
 // ApiServer.js - API REST simplu pentru WebDollar modern
 import { Logger } from '../utils/logger.js';
+import fs from 'fs';
+import path from 'path';
 import { ChainStorage } from '../storage/ChainStorage.js';
 
 export class ApiServer {
@@ -47,6 +49,109 @@ export class ApiServer {
     });
     app.get('/height', (req, res) => {
       res.json({ height: this.chain.getHeight() });
+    });
+
+    app.get('/chain', async (req, res) => {
+      try {
+        const latestBlock = this.chain.getLatestBlock?.() || {};
+        const chainHeight = this.chain.getHeight?.() || 0;
+
+        // Try to get actual network height from legacy node
+        let networkHeight = chainHeight;
+        let syncing = false;
+        try {
+          const legacyResp = await (await import('axios')).default.get('http://127.0.0.1:8081/top', { timeout: 5000 });
+          if (legacyResp.data?.top) {
+            networkHeight = legacyResp.data.top;
+            syncing = chainHeight < networkHeight;
+          }
+        } catch (e) {
+          // Fallback to local height if legacy node unavailable
+        }
+
+        res.json({
+          height: networkHeight,
+          syncing,
+          transactionsCount: (latestBlock.transactions || []).length,
+          hash: latestBlock.hash || '',
+          id: latestBlock.id || ''
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.get('/stake/total', (req, res) => {
+      try {
+        const chain = this.chain;
+        const blocks = chain?.blocks || [];
+        let totalStake = 0;
+
+        // Calculate from all addresses in blockchain (if available)
+        // For now, use a simple calculation based on block count
+        // In production, this should read from proper address balance DB
+        if (blocks.length > 0) {
+          // Sum totalWebd from all blocks
+          totalStake = blocks.reduce((sum, b) => sum + (Number(b.totalWebd) || 0), 0);
+        }
+
+        res.json({
+          totalStakeWebd: totalStake || 0,
+          totalStakeAtomic: (totalStake || 0) * 10000000,
+          walletCount: blocks.length || 0,
+          source: 'db:blockchain.sum'
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.get('/blocks', (req, res) => {
+      try {
+        const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+        const blocks = [];
+        const chainBlocks = this.chain.blocks || [];
+        const startIdx = Math.max(0, chainBlocks.length - limit);
+
+        for (let i = startIdx; i < chainBlocks.length; i++) {
+          const block = chainBlocks[i];
+          if (block) {
+            blocks.push({
+              hash: block.hash || '',
+              height: block.height || i,
+              timestamp: block.timestamp || Date.now(),
+              minerAddress: block.minerAddress || '',
+              transactions: block.transactions || [],
+              totalWebd: block.totalWebd || 0,
+              rewardWebd: block.rewardWebd || null
+            });
+          }
+        }
+        res.json(blocks.reverse());
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.get('/api/visit/stats', (req, res) => {
+      try {
+        const visitFile = '/home/ubuntu/webd-explorer-next/visit_count.json';
+        if (fs.existsSync(visitFile)) {
+          const data = JSON.parse(fs.readFileSync(visitFile, 'utf8'));
+          const pages = Object.entries(data.pages || {}).map(([page, count]) => ({
+            page,
+            count: typeof count === 'number' ? count : 0
+          }));
+          res.json({
+            total: data.total || 0,
+            pages
+          });
+        } else {
+          res.json({ total: 0, pages: [] });
+        }
+      } catch (e) {
+        res.json({ total: 0, pages: [], error: e.message });
+      }
     });
 
     // ── pool/worker endpoints ────────────────────────────────────────────────
