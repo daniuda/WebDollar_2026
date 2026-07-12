@@ -27,7 +27,8 @@ const workerManager  = new WorkerManager(workerStorage, jobManager, shareValidat
 
 async function start() {
   // 1) Pornește infrastructura de bază imediat
-  await api.start(3001);
+  const apiPort = parseInt(process.env.PORT || '3001', 10);
+  await api.start(apiPort);
   wsServer.start();
 
   // 2) Pornire pool - nu blochează
