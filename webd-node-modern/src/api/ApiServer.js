@@ -106,10 +106,49 @@ export class ApiServer {
       }
     });
 
-    app.get('/blocks', (req, res) => {
+    app.get('/blocks', async (req, res) => {
       try {
         const limit = Math.min(parseInt(req.query.limit) || 10, 100);
         const blocks = [];
+
+        // Try to get blocks from legacy node first (more complete data)
+        try {
+          const axios = await import('axios');
+          const legacyResp = await axios.default.get('http://127.0.0.1:8081/top', { timeout: 5000 });
+          const topHeight = legacyResp.data?.top || 0;
+
+          if (topHeight > 0) {
+            const startHeight = Math.max(0, topHeight - limit + 1);
+            const legacyBlocksResp = await axios.default.get(`http://127.0.0.1:8081/blocks/between/${startHeight}/${topHeight}`, { timeout: 10000 });
+
+            if (legacyBlocksResp.data?.blocks && Array.isArray(legacyBlocksResp.data.blocks)) {
+              for (const block of legacyBlocksResp.data.blocks) {
+                const txAmount = (block.data?.transactions || []).reduce((sum, tx) => {
+                  if (tx?.to && Array.isArray(tx.to)) {
+                    return sum + tx.to.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+                  }
+                  return sum;
+                }, 0);
+
+                blocks.push({
+                  hash: block.hash || `block-${block.height}`,
+                  height: block.height || 0,
+                  timestamp: (block.timeStamp || block.timestamp) * 1000,
+                  minerAddress: block.data?.minerAddress || '',
+                  transactions: block.data?.transactions || [],
+                  totalWebd: txAmount,
+                  rewardWebd: null
+                });
+              }
+              res.json(blocks.reverse());
+              return;
+            }
+          }
+        } catch (e) {
+          Logger.warn('Fallback la local blocks din legacy node failed:', e.message);
+        }
+
+        // Fallback: use local chain
         const chainBlocks = this.chain.blocks || [];
         const startIdx = Math.max(0, chainBlocks.length - limit);
 
