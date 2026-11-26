@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+# binarul sidecar e un executabil de ~90MB (SEA, runtime Node embedat) —
+# prea mare pentru git; vezi Release-urile GitHub ale acestui repo pentru
+# un build gata compilat, sau pasul "Node SEA" din SESSION_LOG pentru a-l
+# regenera local din Node-WebDollar/tools/lightweight-signer/webd-miner-cli.js
+src-tauri/binaries/*.exe
+tsconfig.tsbuildinfo
